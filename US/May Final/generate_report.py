@@ -721,6 +721,59 @@ def fig_skill(df, q, nq):
     return fig
 
 
+def fig_stimulus_type(df, q, nq):
+    if 'Stimulus_Type' not in q.columns:
+        return None
+    sts = q.dropna(subset=['Stimulus_Type'])
+    if sts.empty:
+        return None
+
+    stim_colors = {
+        'Text-based':   C['blue'],
+        'Visual-based': C['teal'],
+        'Map-based':    C['orange'],
+    }
+
+    types = sorted(sts['Stimulus_Type'].astype(str).str.strip().unique().tolist())
+
+    labels, vals, colors, hover_texts = [], [], [], []
+    for st in types:
+        st_qs  = q[q['Stimulus_Type'].astype(str).str.strip() == st]['Q_Num'].tolist()
+        avg    = float(np.mean([df[f'Q{qn}'].mean() for qn in st_qs]))
+        q_list = ', '.join(f'Q{qn}' for qn in sorted(st_qs))
+        labels.append(st)
+        vals.append(avg)
+        colors.append(stim_colors.get(st, C['gray']))
+        hover_texts.append(
+            f'<b>{st}</b><br>Questions: {q_list}<br>'
+            f'Count: {len(st_qs)} questions<br>Avg % correct: {avg:.0%}'
+        )
+
+    fig = go.Figure(go.Bar(
+        x=labels, y=vals,
+        marker_color=colors,
+        marker_line_color='white', marker_line_width=1.5,
+        text=[f'{v:.0%}' for v in vals], textposition='outside',
+        cliponaxis=False,
+        hovertext=hover_texts, hoverinfo='text',
+        showlegend=False,
+        width=0.4,
+    ))
+    add_color_legend(fig)
+    fig.add_hline(y=0.70, line_dash='dash', line_color=C['navy'], opacity=0.4,
+                  annotation_text='70% target', annotation_position='top right',
+                  annotation_font=dict(size=10, color=C['navy']))
+    fig.update_layout(**LAYOUT,
+        title='Performance by Stimulus Type',
+        height=380,
+        legend=dict(orientation='h', y=-0.18, x=0.5, xanchor='center', font=dict(size=11)),
+        xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=13)),
+        yaxis=dict(tickformat='.0%', title='Average % Correct', range=[0, 1.25],
+                   showgrid=True, gridcolor='#EEEEEE', zeroline=False),
+    )
+    return fig
+
+
 # ── HTML helpers ──────────────────────────────────────────────────────────────
 def kpi_html(df, nq):
     mean_s  = df['MC_Score'].mean()
@@ -813,8 +866,9 @@ def build_html(df, q, std_name, nq):
         'box':        fig_boxplot(df, nq),
         'scatter':    fig_scatter(df, q, std_name, nq),
         'oi':         fig_oi(df, q, nq),
-        'task_model': fig_task_model(df, q, nq),
-        'skill':      fig_skill(df, q, nq),
+        'task_model':    fig_task_model(df, q, nq),
+        'skill':         fig_skill(df, q, nq),
+        'stimulus_type': fig_stimulus_type(df, q, nq),
     }
 
     nav_links = '<a href="../../index.html">← Home</a>' + ''.join(
@@ -854,6 +908,7 @@ def build_html(df, q, std_name, nq):
         section('Appendix', 'appendix',
             to_div(figs['box']) + to_div(figs['scatter'])
             + (to_div(figs['oi']) if figs['oi'] is not None else '')
+            + (to_div(figs['stimulus_type']) if figs['stimulus_type'] is not None else '')
             + (to_div(figs['task_model']) if figs['task_model'] is not None else '')
             + (to_div(figs['skill']) if figs['skill'] is not None else ''),
             subtitle=''),
