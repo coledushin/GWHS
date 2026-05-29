@@ -12,14 +12,13 @@ import json
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from scipy import stats
 from scipy.ndimage import gaussian_filter1d
 from datetime import date
 
-FILE   = './Global/May Final/Global May Final Data.xlsx'
-TITLE  = 'Global History Final Exam — May 2026'
-OUTPUT = './Global/May Final/global_may_final_report.html'
+FILE   = './US/May Final/US May Final Data.xlsx'
+TITLE  = 'US History Final — May 2026'
+OUTPUT = './US/May Final/us_may_final_report.html'
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 C = dict(red='#E84855', orange='#F4A261', teal='#44BBA4', green='#06D6A0',
@@ -75,7 +74,6 @@ def load_data():
     # Auto-detect question count from Questions sheet
     NQ = len(questions)
 
-    # Rename just the first two columns so extra columns don't break things
     cols = std_sheet.columns.tolist()
     cols[0], cols[1] = 'Code', 'Framework'
     std_sheet.columns = cols
@@ -102,8 +100,6 @@ def load_data():
         rename[scores_raw.columns[10 + NQ + i]] = c
 
     df = scores_raw.rename(columns=rename).dropna(subset=['Class']).copy()
-    df[answer_cols] = df[answer_cols].replace(r'^\s*$', np.nan, regex=True)
-    df[answer_cols] = df[answer_cols].apply(pd.to_numeric, errors='coerce')
     df[correct_cols] = df[correct_cols].apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
     df['MC_Score'] = df[correct_cols].sum(axis=1)
     df['MC_Pct']   = df['MC_Score'] / NQ
@@ -113,7 +109,6 @@ def load_data():
 
     q = questions.copy()
     # Detect if Option columns exist
-    # Rename by original column name so any sheet layout works
     q = q.rename(columns={
         'CMA #':        'Q_Num',
         '#':            'Q_Num',
@@ -180,17 +175,12 @@ def fig_histogram(df, nq):
     return fig
 
 
-def fig_class_period(df, nq):
+def fig_class_bar(df, nq):
     cp = df.groupby(['Class','Period'])['MC_Score'].agg(['mean','count']).reset_index()
     classes = sorted(df['Class'].unique())
     bar_width = 0.22
 
-    fig = make_subplots(rows=1, cols=2,
-                        subplot_titles=['Average Score by Class & Period',
-                                        'Score Distribution by Class'],
-                        horizontal_spacing=0.12)
-
-    # Cumulative x positioning — groups pack tightly regardless of bar count
+    fig = go.Figure()
     group_gap = 0.15
     current_x = 0.0
     class_centers = {}
@@ -204,44 +194,46 @@ def fig_class_period(df, nq):
                 marker_color=CLASS_COLORS.get(cls, C['blue']),
                 marker_line_color='white', marker_line_width=1,
                 text=[f"P{int(row['Period'])}"],
-                textposition='inside',
-                insidetextanchor='end',
+                textposition='inside', insidetextanchor='end',
                 textfont=dict(color='white', size=11),
                 hovertemplate=f'{cls} Period {int(row["Period"])}: {row["mean"]:.1f}/{nq} avg (n={int(row["count"])})<extra></extra>',
                 showlegend=False, width=bar_width * 0.85,
-            ), row=1, col=1)
+            ))
         class_centers[cls] = current_x + (n_bars - 1) * bar_width / 2
         current_x += n_bars * bar_width + group_gap
 
     fig.update_xaxes(tickvals=list(class_centers.values()),
                      ticktext=list(class_centers.keys()),
-                     showgrid=False, zeroline=False, row=1, col=1,
+                     showgrid=False, zeroline=False,
                      range=[-0.25, current_x - group_gap + 0.25])
     fig.update_yaxes(title_text=f'Avg Score (out of {nq})', range=[0, nq * 1.28],
-                     showgrid=True, gridcolor='#EEEEEE', zeroline=False, row=1, col=1)
+                     showgrid=True, gridcolor='#EEEEEE', zeroline=False)
+    fig.update_layout(**LAYOUT, title='Average Score by Class & Period', height=320)
+    return fig
 
+
+def fig_class_dist(df, nq):
+    classes = sorted(df['Class'].unique())
+    fig = go.Figure()
     for cls in classes:
-        cls_df  = df[df['Class'] == cls]
-        x_pts   = list(range(nq + 1))
-        pcts    = np.array([(cls_df['MC_Score'] == s).sum() / len(cls_df) for s in x_pts])
-        color   = CLASS_COLORS.get(cls, C['blue'])
-        sigma    = max(0.7, nq / 14)
+        cls_df = df[df['Class'] == cls]
+        x_pts  = list(range(nq + 1))
+        pcts   = np.array([(cls_df['MC_Score'] == s).sum() / len(cls_df) for s in x_pts])
+        color  = CLASS_COLORS.get(cls, C['blue'])
+        sigma  = max(0.7, nq / 14)
         y_smooth = np.clip(gaussian_filter1d(pcts.astype(float), sigma=sigma), 0, None).tolist()
-
         fig.add_trace(go.Scatter(
             x=x_pts, y=y_smooth, mode='lines',
             line=dict(color=color, width=2.5),
             name=f'{cls} (n={len(cls_df)})',
             hovertemplate=f'{cls}: %{{y:.1%}} at score %{{x}}<extra></extra>',
-        ), row=1, col=2)
-
+        ))
     fig.update_xaxes(title_text=f'Score (out of {nq})', tickvals=list(range(nq + 1)),
-                     showgrid=False, zeroline=False, row=1, col=2)
+                     showgrid=False, zeroline=False)
     fig.update_yaxes(title_text='Share of Class', tickformat='.0%',
-                     showgrid=True, gridcolor='#EEEEEE', zeroline=False, row=1, col=2)
-
-    fig.update_layout(**LAYOUT, height=380,
-                      legend=dict(orientation='h', y=-0.18, x=0.75, xanchor='center'))
+                     showgrid=True, gridcolor='#EEEEEE', zeroline=False)
+    fig.update_layout(**LAYOUT, title='Score Distribution by Class', height=320,
+                      legend=dict(orientation='h', y=-0.22, x=0.5, xanchor='center'))
     return fig
 
 
@@ -272,14 +264,15 @@ def fig_difficulty(df, q, std_name, nq):
 
     all_vals = [v for row in z_data for v in row]
     zmin_val, zmax_val = min(all_vals), max(all_vals)
-    show_text = nq <= 20
 
+    show_text = nq <= 20
     fig = go.Figure(go.Heatmap(
         z=z_data, x=col_labels, y=row_names,
         colorscale=[[0, C['red']], [0.5, C['orange']], [1.0, C['teal']]],
         zmin=zmin_val, zmax=zmax_val,
-        xgap=4, ygap=4,
-        text=text_data, texttemplate='%{text}' if show_text else '',
+        xgap=3, ygap=3,
+        text=text_data,
+        texttemplate='%{text}' if show_text else '',
         textfont=dict(size=11, color='white'),
         hoverinfo='text', hovertext=hover_data,
         showscale=True,
@@ -331,114 +324,6 @@ def fig_difficulty(df, q, std_name, nq):
     return fig
 
 
-def difficulty_html(df, q, std_name, nq):
-    import re as _re
-
-    overall_p     = [df[f'Q{i}'].mean() for i in range(1, nq + 1)]
-    order         = list(np.argsort(overall_p))
-    q_nums_sorted = [order[j] + 1 for j in range(nq)]
-    col_labels    = [f'Q{q_nums_sorted[j]}' for j in range(nq)]
-    full_q        = [str(q['Question'].tolist()[order[j]]).strip() for j in range(nq)]
-    answers       = [str(q['Full_Answer'].tolist()[order[j]]).strip() for j in range(nq)]
-    std_labels    = [std_name(q['Content_Std'].tolist()[order[j]], 35) for j in range(nq)]
-
-    row_names = ['Overall'] + sorted(df['Class'].unique().tolist())
-    z_data, text_data, hover_data = [], [], []
-    for row_name in row_names:
-        fdf   = df if row_name == 'Overall' else df[df['Class'] == row_name]
-        n     = len(fdf)
-        row_p = [fdf[f'Q{q_nums_sorted[j]}'].mean() for j in range(nq)]
-        z_data.append(row_p)
-        text_data.append([f'{p:.0%}' for p in row_p])
-        hover_data.append([
-            f'<b>Q{q_nums_sorted[j]}: {std_labels[j]}</b><br>'
-            f'{full_q[j]}<br><br>'
-            f'✓ <b>Correct:</b> {answers[j]}<br>'
-            f'{row_name} (n={n}): {row_p[j]:.0%} correct'
-            for j in range(nq)
-        ])
-
-    all_vals = [v for row in z_data for v in row]
-    zmin_val, zmax_val = min(all_vals), max(all_vals)
-    show_text = nq <= 20
-
-    nat_order = list(range(nq))
-    col_nat   = [f'Q{j+1}' for j in nat_order]
-    z_nat, txt_nat, hov_nat = [], [], []
-    for ri, row_name in enumerate(row_names):
-        z_nat.append([z_data[ri][order.index(j)] for j in nat_order])
-        txt_nat.append([f'{z_nat[-1][j]:.0%}' for j in range(nq)])
-        hov_nat.append([
-            f'<b>Q{j+1}: {std_name(q["Content_Std"].tolist()[j], 35)}</b><br>'
-            f'{str(q["Question"].tolist()[j]).strip()}<br><br>'
-            f'{row_name}: {z_nat[-1][j]:.0%} correct'
-            for j in nat_order
-        ])
-
-    fig = go.Figure(go.Heatmap(
-        z=z_data, x=col_labels, y=row_names,
-        colorscale=[[0, C['red']], [0.5, C['orange']], [1.0, C['teal']]],
-        zmin=zmin_val, zmax=zmax_val,
-        xgap=4, ygap=4,
-        text=text_data, texttemplate='%{text}' if show_text else '',
-        textfont=dict(size=11, color='white'),
-        hoverinfo='text', hovertext=hover_data,
-        showscale=True,
-        colorbar=dict(title='% Correct', tickformat='.0%',
-                      tickvals=[zmin_val, (zmin_val+zmax_val)/2, zmax_val],
-                      ticktext=[f'{zmin_val:.0%}', f'{(zmin_val+zmax_val)/2:.0%}', f'{zmax_val:.0%}']),
-    ))
-    fig.add_shape(type='line', xref='paper', yref='y',
-                  x0=0, x1=1, y0=0.5, y1=0.5,
-                  line=dict(color='white', width=10), layer='above')
-    fig.update_layout(**LAYOUT,
-        title='',
-        height=max(240, 80 + 70 * len(row_names)),
-        xaxis=dict(side='top', title='', tickfont=dict(size=11), showgrid=False, ticklen=8),
-        yaxis=dict(autorange='reversed', tickfont=dict(size=12), showgrid=False, ticklen=8),
-        margin=dict(l=95, r=20, t=70, b=20),
-    )
-
-    chart_div = fig.to_html(full_html=False, include_plotlyjs=False,
-                            config={'displayModeBar': False, 'responsive': True})
-
-    m = _re.search(r'<div id="([^"]+)"', chart_div)
-    fig_id = m.group(1) if m else 'plotly-diff'
-
-    sorted_js  = json.dumps({'x': col_labels, 'z': z_data,  'text': text_data, 'hovertext': hover_data})
-    natural_js = json.dumps({'x': col_nat,    'z': z_nat,   'text': txt_nat,   'hovertext': hov_nat})
-
-    btn_html = (
-        f'<div class="q-btns">'
-        f'<button class="q-btn q-btn-active" data-view="sorted" data-fig="{fig_id}">Hardest → Easiest</button>'
-        f'<button class="q-btn" data-view="natural" data-fig="{fig_id}">Question Order</button>'
-        f'</div>'
-    )
-
-    return f'''{chart_div}
-{btn_html}
-<script>
-(function(){{
-  var sorted={sorted_js};
-  var natural={natural_js};
-  function attach(){{
-    var el=document.getElementById('{fig_id}');
-    if(!el){{setTimeout(attach,80);return;}}
-    document.querySelectorAll('.q-btn[data-fig="{fig_id}"]').forEach(function(btn){{
-      btn.addEventListener('click',function(){{
-        var d=this.dataset.view==='sorted'?sorted:natural;
-        Plotly.restyle(el,{{x:[d.x],z:[d.z],text:[d.text],hovertext:[d.hovertext]}});
-        document.querySelectorAll('.q-btn[data-fig="{fig_id}"]').forEach(function(b){{
-          b.classList.toggle('q-btn-active',b===btn);
-        }});
-      }});
-    }});
-  }}
-  attach();
-}})();
-</script>'''
-
-
 def distractor_html(df, q, nq):
     """Returns self-contained HTML: question text div + chart + buttons + JS listener.
     Layout (top to bottom): question text → chart → Q-buttons."""
@@ -453,7 +338,7 @@ def distractor_html(df, q, nq):
         ca    = int(qrow['Answer'])
         opts  = ([str(qrow[f'Opt{j}']).strip() for j in range(1, 5)]
                  if has_opts else [str(j) for j in range(1, 5)])
-        answered = pd.to_numeric(df[f'Q{q_num}_ans'], errors='coerce').dropna().astype(int)
+        answered = df[f'Q{q_num}_ans'].dropna().astype(int)
         total    = len(answered)
         counts   = answered.value_counts().reindex([1, 2, 3, 4], fill_value=0)
         pcts     = [counts[j] / total if total > 0 else 0 for j in range(1, 5)]
@@ -471,13 +356,13 @@ def distractor_html(df, q, nq):
         ))
 
     fig.update_layout(**LAYOUT,
-        height=380,
+        height=340,
         xaxis=dict(tickvals=[1, 2, 3, 4], title='',
                    showgrid=False, zeroline=False),
         yaxis=dict(tickformat='.0%', title='% of Students', range=[0, 1.18],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
     )
-    fig.update_layout(margin=dict(l=0, r=20, t=5, b=70))
+    fig.update_layout(margin=dict(l=0, r=20, t=5, b=20))
 
     chart_div = fig.to_html(full_html=False, include_plotlyjs=False,
                             config={'displayModeBar': False, 'responsive': True})
@@ -921,7 +806,8 @@ def build_html(df, q, std_name, nq):
 
     figs = {
         'hist':       fig_histogram(df, nq),
-        'cp':         fig_class_period(df, nq),
+        'cp_bar':     fig_class_bar(df, nq),
+        'cp_dist':    fig_class_dist(df, nq),
         'diff':       fig_difficulty(df, q, std_name, nq),
         'grp':        fig_groups(df, nq),
         'box':        fig_boxplot(df, nq),
@@ -946,11 +832,13 @@ def build_html(df, q, std_name, nq):
             kpi_html(df, nq) + to_div(figs['hist'])),
 
         section('2.  Class & Period Performance', 'class-period',
-            to_div(figs['cp'])),
+            '<div class="chart-grid">'
+            + to_div(figs['cp_bar']) + to_div(figs['cp_dist'])
+            + '</div>'),
 
         section('3.  Which Questions Were Hardest?', 'difficulty',
-            to_div(figs['diff']),
-),
+            f'<div class="scroll-x"><div style="min-width:{max(520, NQ * 34)}px">'
+            + to_div(figs['diff']) + '</div></div>'),
 
         section('4.  What Did Students Select?', 'distractor',
             distractor_html(df, q, nq),
@@ -1022,6 +910,13 @@ def build_html(df, q, std_name, nq):
       color: #777; font-size: 0.85rem; margin: 6px 0 16px; font-style: italic;
     }}
     .plotly-graph-div {{ width: 100% !important; }}
+    .chart-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }}
+    .scroll-x {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+    .scroll-x > * {{ min-width: 520px; }}
     .q-btns {{
       display: flex; flex-wrap: wrap; gap: 5px;
       margin-top: 10px; padding: 0 2px;
@@ -1050,6 +945,12 @@ def build_html(df, q, std_name, nq):
   </header>
   <main>{body}</main>
   <footer>Generated {today}</footer>
+  <script>
+    // Plotly computes chart sizes before CSS grid finishes layout.
+    // Re-fire resize once the grid cells have their final dimensions.
+    setTimeout(function() {{ window.dispatchEvent(new Event('resize')); }}, 50);
+    setTimeout(function() {{ window.dispatchEvent(new Event('resize')); }}, 300);
+  </script>
 </body>
 </html>'''
 
