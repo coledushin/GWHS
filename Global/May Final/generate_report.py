@@ -301,15 +301,6 @@ def fig_difficulty(df, q, std_name, nq):
             for j in nat_order
         ])
 
-    sort_btns = [
-        dict(label='Hardest → Easiest', method='update',
-             args=[{'x': [col_labels], 'z': [z_data], 'text': [text_data],
-                    'hovertext': [hover_data]}]),
-        dict(label='Question Order', method='update',
-             args=[{'x': [col_nat],   'z': [z_nat],  'text': [txt_nat],
-                    'hovertext': [hov_nat]}]),
-    ]
-
     fig.update_layout(**LAYOUT,
         title='',
         height=max(240, 80 + 70 * len(row_names)),
@@ -317,13 +308,7 @@ def fig_difficulty(df, q, std_name, nq):
                    ticklen=8),
         yaxis=dict(autorange='reversed', tickfont=dict(size=12), showgrid=False,
                    ticklen=8),
-        updatemenus=[dict(
-            type='buttons', buttons=sort_btns, direction='right',
-            showactive=True, x=0, xanchor='left', y=-0.1, yanchor='top',
-            bgcolor='white', bordercolor='#CCCCCC', font=dict(size=10),
-        )],
     )
-    # White line between Overall row (y=0) and first class row (y=1)
     fig.add_shape(type='line', xref='paper', yref='y',
                   x0=0, x1=1, y0=0.5, y1=0.5,
                   line=dict(color='white', width=10), layer='above')
@@ -396,8 +381,8 @@ def difficulty_html(df, q, std_name, nq):
         height=max(240, 80 + 70 * len(row_names)),
         xaxis=dict(side='top', title='', tickfont=dict(size=11), showgrid=False, ticklen=8),
         yaxis=dict(autorange='reversed', tickfont=dict(size=12), showgrid=False, ticklen=8),
-        margin=dict(l=95, r=20, t=70, b=20),
     )
+    fig.update_layout(margin=dict(l=95, r=20, t=70, b=20))
 
     chart_div = fig.to_html(full_html=False, include_plotlyjs=False,
                             config={'displayModeBar': False, 'responsive': True})
@@ -973,13 +958,12 @@ def build_html(df, q, std_name, nq):
     today  = date.today().strftime('%B %d, %Y')
 
     figs = {
-        'hist':       fig_histogram(df, nq),
-        'cp':         fig_class_period(df, nq),
-        'diff':       fig_difficulty(df, q, std_name, nq),
-        'grp':        fig_groups(df, nq),
-        'box':        fig_boxplot(df, nq),
-        'scatter':    fig_scatter(df, q, std_name, nq),
-        'oi':         fig_oi(df, q, nq),
+        'hist':          fig_histogram(df, nq),
+        'cp':            fig_class_period(df, nq),
+        'grp':           fig_groups(df, nq),
+        'box':           fig_boxplot(df, nq),
+        'scatter':       fig_scatter(df, q, std_name, nq),
+        'oi':            fig_oi(df, q, nq),
         'task_model':    fig_task_model(df, q, nq),
         'skill':         fig_skill(df, q, nq),
         'stimulus_type': fig_stimulus_type(df, q, nq),
@@ -1003,7 +987,7 @@ def build_html(df, q, std_name, nq):
             to_div(figs['cp'])),
 
         section('3.  Which Questions Were Hardest?', 'difficulty',
-            to_div(figs['diff']),
+            difficulty_html(df, q, std_name, nq),
 ),
 
         section('4.  What Did Students Select?', 'distractor',
