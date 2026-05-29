@@ -264,12 +264,14 @@ def fig_difficulty(df, q, std_name, nq):
     all_vals = [v for row in z_data for v in row]
     zmin_val, zmax_val = min(all_vals), max(all_vals)
 
+    show_text = nq <= 20
     fig = go.Figure(go.Heatmap(
         z=z_data, x=col_labels, y=row_names,
         colorscale=[[0, C['red']], [0.5, C['orange']], [1.0, C['teal']]],
         zmin=zmin_val, zmax=zmax_val,
-        xgap=4, ygap=4,
-        text=text_data, texttemplate='%{text}',
+        xgap=3, ygap=3,
+        text=text_data,
+        texttemplate='%{text}' if show_text else '',
         textfont=dict(size=11, color='white'),
         hoverinfo='text', hovertext=hover_data,
         showscale=True,
@@ -352,54 +354,57 @@ def distractor_html(df, q, nq):
             hoverinfo='text', visible=(q_num == 1), showlegend=False, cliponaxis=False,
         ))
 
-    # Buttons update only trace visibility — question text handled by JS+HTML div
-    buttons = [dict(
-        label=f'Q{q_num}',
-        method='restyle',
-        args=[{'visible': [i == (q_num - 1) for i in range(nq)]}],
-    ) for q_num in range(1, nq + 1)]
-
     fig.update_layout(**LAYOUT,
-        height=380,
+        height=340,
         xaxis=dict(tickvals=[1, 2, 3, 4], title='',
                    showgrid=False, zeroline=False),
         yaxis=dict(tickformat='.0%', title='% of Students', range=[0, 1.18],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
-        updatemenus=[dict(
-            type='buttons', buttons=buttons, direction='right',
-            showactive=True, x=0, xanchor='left',
-            y=-0.08, yanchor='top',
-            bgcolor='white', bordercolor='#CCCCCC',
-            font=dict(size=10), pad=dict(r=4, t=4, b=4),
-        )],
     )
-    fig.update_layout(margin=dict(l=0, r=20, t=5, b=70))
+    fig.update_layout(margin=dict(l=0, r=20, t=5, b=20))
 
     chart_div = fig.to_html(full_html=False, include_plotlyjs=False,
                             config={'displayModeBar': False, 'responsive': True})
 
-    # Extract the auto-generated plotly div ID
     m = _re.search(r'<div id="([^"]+)"', chart_div)
     fig_id = m.group(1) if m else 'plotly-dis'
     txt_id = f'dis-q-text-{fig_id[-8:]}'
 
-    # All question texts as a JS array
     texts_js = '[' + ','.join(
         json.dumps(q_text_map.get(i, '')) for i in range(1, nq + 1)
     ) + ']'
+
+    btn_items = ''.join(
+        f'<button class="q-btn{"  q-btn-active" if q_num == 1 else ""}" '
+        f'data-qi="{q_num - 1}" data-fig="{fig_id}">Q{q_num}</button>'
+        for q_num in range(1, nq + 1)
+    )
+    btn_html = f'<div class="q-btns">{btn_items}</div>'
 
     return f'''
 <div id="{txt_id}" style="font-size:13px;color:{C['navy']};
      padding:10px 4px 4px;min-height:20px;line-height:1.5">{q_text_map[1]}</div>
 {chart_div}
+{btn_html}
 <script>
 (function(){{
   var texts={texts_js};
   var td=document.getElementById('{txt_id}');
+  var nq={nq};
   function attach(){{
     var el=document.getElementById('{fig_id}');
-    if(!el||!el.on){{setTimeout(attach,80);return;}}
-    el.on('plotly_buttonclicked',function(d){{td.textContent=texts[d.button._index]||'';}} );
+    if(!el){{setTimeout(attach,80);return;}}
+    document.querySelectorAll('.q-btn[data-fig="{fig_id}"]').forEach(function(btn){{
+      btn.addEventListener('click',function(){{
+        var qi=parseInt(this.dataset.qi);
+        var vis=Array(nq).fill(false); vis[qi]=true;
+        Plotly.restyle(el,{{visible:vis}});
+        td.textContent=texts[qi]||'';
+        document.querySelectorAll('.q-btn[data-fig="{fig_id}"]').forEach(function(b){{
+          b.classList.toggle('q-btn-active', b===btn);
+        }});
+      }});
+    }});
   }}
   attach();
 }})();
@@ -789,7 +794,8 @@ def build_html(df, q, std_name, nq):
             + '</div>'),
 
         section('3.  Which Questions Were Hardest?', 'difficulty',
-            '<div class="scroll-x">' + to_div(figs['diff']) + '</div>'),
+            f'<div class="scroll-x"><div style="min-width:{max(520, NQ * 34)}px">'
+            + to_div(figs['diff']) + '</div></div>'),
 
         section('4.  What Did Students Select?', 'distractor',
             distractor_html(df, q, nq),
@@ -867,6 +873,17 @@ def build_html(df, q, std_name, nq):
     }}
     .scroll-x {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
     .scroll-x > * {{ min-width: 520px; }}
+    .q-btns {{
+      display: flex; flex-wrap: wrap; gap: 5px;
+      margin-top: 10px; padding: 0 2px;
+    }}
+    .q-btn {{
+      font-size: 0.78rem; padding: 3px 9px; border-radius: 6px;
+      border: 1px solid #CCC; background: white; cursor: pointer;
+      color: {C["navy"]}; transition: background .1s, color .1s;
+    }}
+    .q-btn:hover {{ background: #f0f2f5; }}
+    .q-btn-active {{ background: {C["navy"]} !important; color: white !important; border-color: {C["navy"]} !important; }}
     footer {{ text-align: center; padding: 28px; font-size: 0.78rem; color: #aaa; }}
     @media (max-width: 640px) {{
       header {{ padding: 12px 16px; flex-direction: column; align-items: flex-start; }}
@@ -884,6 +901,12 @@ def build_html(df, q, std_name, nq):
   </header>
   <main>{body}</main>
   <footer>Generated {today}</footer>
+  <script>
+    // Plotly computes chart sizes before CSS grid finishes layout.
+    // Re-fire resize once the grid cells have their final dimensions.
+    setTimeout(function() {{ window.dispatchEvent(new Event('resize')); }}, 50);
+    setTimeout(function() {{ window.dispatchEvent(new Event('resize')); }}, 300);
+  </script>
 </body>
 </html>'''
 
