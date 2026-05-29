@@ -361,54 +361,57 @@ def distractor_html(df, q, nq):
             hoverinfo='text', visible=(q_num == 1), showlegend=False, cliponaxis=False,
         ))
 
-    # Buttons update only trace visibility — question text handled by JS+HTML div
-    buttons = [dict(
-        label=f'Q{q_num}',
-        method='restyle',
-        args=[{'visible': [i == (q_num - 1) for i in range(nq)]}],
-    ) for q_num in range(1, nq + 1)]
-
     fig.update_layout(**LAYOUT,
         height=380,
         xaxis=dict(tickvals=[1, 2, 3, 4], title='',
                    showgrid=False, zeroline=False),
         yaxis=dict(tickformat='.0%', title='% of Students', range=[0, 1.18],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
-        updatemenus=[dict(
-            type='buttons', buttons=buttons, direction='right',
-            showactive=True, x=0, xanchor='left',
-            y=-0.08, yanchor='top',
-            bgcolor='white', bordercolor='#CCCCCC',
-            font=dict(size=10), pad=dict(r=4, t=4, b=4),
-        )],
     )
     fig.update_layout(margin=dict(l=0, r=20, t=5, b=70))
 
     chart_div = fig.to_html(full_html=False, include_plotlyjs=False,
                             config={'displayModeBar': False, 'responsive': True})
 
-    # Extract the auto-generated plotly div ID
     m = _re.search(r'<div id="([^"]+)"', chart_div)
     fig_id = m.group(1) if m else 'plotly-dis'
     txt_id = f'dis-q-text-{fig_id[-8:]}'
 
-    # All question texts as a JS array
     texts_js = '[' + ','.join(
         json.dumps(q_text_map.get(i, '')) for i in range(1, nq + 1)
     ) + ']'
+
+    btn_items = ''.join(
+        f'<button class="q-btn{"  q-btn-active" if q_num == 1 else ""}" '
+        f'data-qi="{q_num - 1}" data-fig="{fig_id}">Q{q_num}</button>'
+        for q_num in range(1, nq + 1)
+    )
+    btn_html = f'<div class="q-btns">{btn_items}</div>'
 
     return f'''
 <div id="{txt_id}" style="font-size:13px;color:{C['navy']};
      padding:10px 4px 4px;min-height:20px;line-height:1.5">{q_text_map[1]}</div>
 {chart_div}
+{btn_html}
 <script>
 (function(){{
   var texts={texts_js};
   var td=document.getElementById('{txt_id}');
+  var nq={nq};
   function attach(){{
     var el=document.getElementById('{fig_id}');
-    if(!el||!el.on){{setTimeout(attach,80);return;}}
-    el.on('plotly_buttonclicked',function(d){{td.textContent=texts[d.button._index]||'';}} );
+    if(!el){{setTimeout(attach,80);return;}}
+    document.querySelectorAll('.q-btn[data-fig="{fig_id}"]').forEach(function(btn){{
+      btn.addEventListener('click',function(){{
+        var qi=parseInt(this.dataset.qi);
+        var vis=Array(nq).fill(false); vis[qi]=true;
+        Plotly.restyle(el,{{visible:vis}});
+        td.textContent=texts[qi]||'';
+        document.querySelectorAll('.q-btn[data-fig="{fig_id}"]').forEach(function(b){{
+          b.classList.toggle('q-btn-active', b===btn);
+        }});
+      }});
+    }});
   }}
   attach();
 }})();
