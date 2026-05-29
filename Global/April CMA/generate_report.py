@@ -12,7 +12,6 @@ import json
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from scipy import stats
 from scipy.ndimage import gaussian_filter1d
 from datetime import date
@@ -177,17 +176,12 @@ def fig_histogram(df, nq):
     return fig
 
 
-def fig_class_period(df, nq):
+def fig_class_bar(df, nq):
     cp = df.groupby(['Class','Period'])['MC_Score'].agg(['mean','count']).reset_index()
     classes = sorted(df['Class'].unique())
     bar_width = 0.22
 
-    fig = make_subplots(rows=1, cols=2,
-                        subplot_titles=['Average Score by Class & Period',
-                                        'Score Distribution by Class'],
-                        horizontal_spacing=0.12)
-
-    # Cumulative x positioning — groups pack tightly regardless of bar count
+    fig = go.Figure()
     group_gap = 0.15
     current_x = 0.0
     class_centers = {}
@@ -201,44 +195,46 @@ def fig_class_period(df, nq):
                 marker_color=CLASS_COLORS.get(cls, C['blue']),
                 marker_line_color='white', marker_line_width=1,
                 text=[f"P{int(row['Period'])}"],
-                textposition='inside',
-                insidetextanchor='end',
+                textposition='inside', insidetextanchor='end',
                 textfont=dict(color='white', size=11),
                 hovertemplate=f'{cls} Period {int(row["Period"])}: {row["mean"]:.1f}/{nq} avg (n={int(row["count"])})<extra></extra>',
                 showlegend=False, width=bar_width * 0.85,
-            ), row=1, col=1)
+            ))
         class_centers[cls] = current_x + (n_bars - 1) * bar_width / 2
         current_x += n_bars * bar_width + group_gap
 
     fig.update_xaxes(tickvals=list(class_centers.values()),
                      ticktext=list(class_centers.keys()),
-                     showgrid=False, zeroline=False, row=1, col=1,
+                     showgrid=False, zeroline=False,
                      range=[-0.25, current_x - group_gap + 0.25])
     fig.update_yaxes(title_text=f'Avg Score (out of {nq})', range=[0, nq * 1.28],
-                     showgrid=True, gridcolor='#EEEEEE', zeroline=False, row=1, col=1)
+                     showgrid=True, gridcolor='#EEEEEE', zeroline=False)
+    fig.update_layout(**LAYOUT, title='Average Score by Class & Period', height=320)
+    return fig
 
+
+def fig_class_dist(df, nq):
+    classes = sorted(df['Class'].unique())
+    fig = go.Figure()
     for cls in classes:
-        cls_df  = df[df['Class'] == cls]
-        x_pts   = list(range(nq + 1))
-        pcts    = np.array([(cls_df['MC_Score'] == s).sum() / len(cls_df) for s in x_pts])
-        color   = CLASS_COLORS.get(cls, C['blue'])
-        sigma    = max(0.7, nq / 14)
+        cls_df = df[df['Class'] == cls]
+        x_pts  = list(range(nq + 1))
+        pcts   = np.array([(cls_df['MC_Score'] == s).sum() / len(cls_df) for s in x_pts])
+        color  = CLASS_COLORS.get(cls, C['blue'])
+        sigma  = max(0.7, nq / 14)
         y_smooth = np.clip(gaussian_filter1d(pcts.astype(float), sigma=sigma), 0, None).tolist()
-
         fig.add_trace(go.Scatter(
             x=x_pts, y=y_smooth, mode='lines',
             line=dict(color=color, width=2.5),
             name=f'{cls} (n={len(cls_df)})',
             hovertemplate=f'{cls}: %{{y:.1%}} at score %{{x}}<extra></extra>',
-        ), row=1, col=2)
-
+        ))
     fig.update_xaxes(title_text=f'Score (out of {nq})', tickvals=list(range(nq + 1)),
-                     showgrid=False, zeroline=False, row=1, col=2)
+                     showgrid=False, zeroline=False)
     fig.update_yaxes(title_text='Share of Class', tickformat='.0%',
-                     showgrid=True, gridcolor='#EEEEEE', zeroline=False, row=1, col=2)
-
-    fig.update_layout(**LAYOUT, height=380,
-                      legend=dict(orientation='h', y=-0.18, x=0.75, xanchor='center'))
+                     showgrid=True, gridcolor='#EEEEEE', zeroline=False)
+    fig.update_layout(**LAYOUT, title='Score Distribution by Class', height=320,
+                      legend=dict(orientation='h', y=-0.22, x=0.5, xanchor='center'))
     return fig
 
 
@@ -765,7 +761,8 @@ def build_html(df, q, std_name, nq):
 
     figs = {
         'hist':       fig_histogram(df, nq),
-        'cp':         fig_class_period(df, nq),
+        'cp_bar':     fig_class_bar(df, nq),
+        'cp_dist':    fig_class_dist(df, nq),
         'diff':       fig_difficulty(df, q, std_name, nq),
         'grp':        fig_groups(df, nq),
         'box':        fig_boxplot(df, nq),
@@ -774,7 +771,7 @@ def build_html(df, q, std_name, nq):
         'task_model': fig_task_model(df, q, nq),
     }
 
-    nav_links = ''.join(
+    nav_links = '<a href="../../index.html">← Home</a>' + ''.join(
         f'<a href="#{a}">{t}</a>'
         for a, t in [
             ('overview','Overview'), ('class-period','Class & Period'),
@@ -789,11 +786,12 @@ def build_html(df, q, std_name, nq):
             kpi_html(df, nq) + to_div(figs['hist'])),
 
         section('2.  Class & Period Performance', 'class-period',
-            to_div(figs['cp'])),
+            '<div class="chart-grid">'
+            + to_div(figs['cp_bar']) + to_div(figs['cp_dist'])
+            + '</div>'),
 
         section('3.  Which Questions Were Hardest?', 'difficulty',
-            to_div(figs['diff']),
-),
+            '<div class="scroll-x">' + to_div(figs['diff']) + '</div>'),
 
         section('4.  What Did Students Select?', 'distractor',
             distractor_html(df, q, nq),
@@ -864,6 +862,13 @@ def build_html(df, q, std_name, nq):
       color: #777; font-size: 0.85rem; margin: 6px 0 16px; font-style: italic;
     }}
     .plotly-graph-div {{ width: 100% !important; }}
+    .chart-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }}
+    .scroll-x {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+    .scroll-x > * {{ min-width: 520px; }}
     footer {{ text-align: center; padding: 28px; font-size: 0.78rem; color: #aaa; }}
     @media (max-width: 640px) {{
       header {{ padding: 12px 16px; flex-direction: column; align-items: flex-start; }}
