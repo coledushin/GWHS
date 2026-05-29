@@ -9,7 +9,7 @@ Config keys:
   output        – path to write the HTML output
   home_link     – href for the ← Home nav link (default: '../../index.html')
   class_colors  – dict mapping class name → hex color (optional)
-                  defaults to Bermejo=blue, Dushin=orange, Kovelsky=teal
+                  defaults to Bermejo=blue, Sourial=blue, Dushin=orange, Kovelsky=teal
 """
 
 import json
@@ -31,7 +31,7 @@ C = dict(
 )
 
 # Default class colors — overridden by config['class_colors'] in run()
-CLASS_COLORS = {'Bermejo': C['blue'], 'Dushin': C['orange'], 'Kovelsky': C['teal']}
+CLASS_COLORS = {'Bermejo': C['blue'], 'Sourial': C['blue'], 'Dushin': C['orange'], 'Kovelsky': C['teal']}
 
 LAYOUT = dict(
     plot_bgcolor='white', paper_bgcolor='white',
