@@ -272,13 +272,14 @@ def fig_difficulty(df, q, std_name, nq):
 
     all_vals = [v for row in z_data for v in row]
     zmin_val, zmax_val = min(all_vals), max(all_vals)
+    show_text = nq <= 20
 
     fig = go.Figure(go.Heatmap(
         z=z_data, x=col_labels, y=row_names,
         colorscale=[[0, C['red']], [0.5, C['orange']], [1.0, C['teal']]],
         zmin=zmin_val, zmax=zmax_val,
         xgap=4, ygap=4,
-        text=text_data, texttemplate='%{text}',
+        text=text_data, texttemplate='%{text}' if show_text else '',
         textfont=dict(size=11, color='white'),
         hoverinfo='text', hovertext=hover_data,
         showscale=True,
@@ -686,6 +687,47 @@ def fig_task_model(df, q, nq):
     return fig
 
 
+def fig_skill(df, q, nq):
+    import re as _re
+    sks = q.dropna(subset=['Skill'])
+    if sks.empty:
+        return None
+
+    def skill_label(s):
+        m = _re.match(r'^([A-Z])\.', s.strip())
+        return m.group(1) if m else s[:2]
+
+    skills = sorted(sks['Skill'].astype(str).str.strip().unique().tolist())
+
+    labels, vals, hover_texts = [], [], []
+    for sk in skills:
+        sk_qs  = q[q['Skill'].astype(str).str.strip() == sk]['Q_Num'].tolist()
+        avg    = float(np.mean([df[f'Q{qn}'].mean() for qn in sk_qs]))
+        q_list = ', '.join(f'Q{qn}' for qn in sorted(sk_qs))
+        labels.append(skill_label(sk))
+        vals.append(avg)
+        hover_texts.append(f'<b>{sk}</b><br>Questions: {q_list}<br>Avg % correct: {avg:.0%}')
+
+    fig = go.Figure(go.Bar(
+        x=labels, y=vals,
+        marker_color=[pct_color(v) for v in vals],
+        marker_line_color='white', marker_line_width=1.5,
+        text=[f'{v:.0%}' for v in vals], textposition='outside',
+        cliponaxis=False,
+        hovertext=hover_texts, hoverinfo='text',
+        showlegend=False,
+        width=0.4,
+    ))
+    fig.update_layout(**LAYOUT,
+        title='Performance by Skill',
+        height=380,
+        xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=13)),
+        yaxis=dict(tickformat='.0%', title='Average % Correct', range=[0, 1.25],
+                   showgrid=True, gridcolor='#EEEEEE', zeroline=False),
+    )
+    return fig
+
+
 # ── HTML helpers ──────────────────────────────────────────────────────────────
 def kpi_html(df, nq):
     mean_s  = df['MC_Score'].mean()
@@ -778,6 +820,7 @@ def build_html(df, q, std_name, nq):
         'scatter':    fig_scatter(df, q, std_name, nq),
         'oi':         fig_oi(df, q, nq),
         'task_model': fig_task_model(df, q, nq),
+        'skill':      fig_skill(df, q, nq),
     }
 
     nav_links = ''.join(
@@ -815,7 +858,8 @@ def build_html(df, q, std_name, nq):
         section('Appendix', 'appendix',
             to_div(figs['box']) + to_div(figs['scatter'])
             + (to_div(figs['oi']) if figs['oi'] is not None else '')
-            + (to_div(figs['task_model']) if figs['task_model'] is not None else ''),
+            + (to_div(figs['task_model']) if figs['task_model'] is not None else '')
+            + (to_div(figs['skill']) if figs['skill'] is not None else ''),
             subtitle=''),
     ])
 
