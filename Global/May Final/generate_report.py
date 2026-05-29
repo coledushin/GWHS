@@ -18,8 +18,8 @@ from scipy.ndimage import gaussian_filter1d
 from datetime import date
 
 FILE   = './Global/May Final/Global May Final Data.xlsx'
-TITLE  = 'Global History CMA — May 2026'
-OUTPUT = './Global/May Final/global_may_cma_report.html'
+TITLE  = 'Global History Final Exam — May 2026'
+OUTPUT = './Global/May Final/global_may_final_report.html'
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 C = dict(red='#E84855', orange='#F4A261', teal='#44BBA4', green='#06D6A0',
