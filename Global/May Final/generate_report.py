@@ -331,6 +331,114 @@ def fig_difficulty(df, q, std_name, nq):
     return fig
 
 
+def difficulty_html(df, q, std_name, nq):
+    import re as _re
+
+    overall_p     = [df[f'Q{i}'].mean() for i in range(1, nq + 1)]
+    order         = list(np.argsort(overall_p))
+    q_nums_sorted = [order[j] + 1 for j in range(nq)]
+    col_labels    = [f'Q{q_nums_sorted[j]}' for j in range(nq)]
+    full_q        = [str(q['Question'].tolist()[order[j]]).strip() for j in range(nq)]
+    answers       = [str(q['Full_Answer'].tolist()[order[j]]).strip() for j in range(nq)]
+    std_labels    = [std_name(q['Content_Std'].tolist()[order[j]], 35) for j in range(nq)]
+
+    row_names = ['Overall'] + sorted(df['Class'].unique().tolist())
+    z_data, text_data, hover_data = [], [], []
+    for row_name in row_names:
+        fdf   = df if row_name == 'Overall' else df[df['Class'] == row_name]
+        n     = len(fdf)
+        row_p = [fdf[f'Q{q_nums_sorted[j]}'].mean() for j in range(nq)]
+        z_data.append(row_p)
+        text_data.append([f'{p:.0%}' for p in row_p])
+        hover_data.append([
+            f'<b>Q{q_nums_sorted[j]}: {std_labels[j]}</b><br>'
+            f'{full_q[j]}<br><br>'
+            f'✓ <b>Correct:</b> {answers[j]}<br>'
+            f'{row_name} (n={n}): {row_p[j]:.0%} correct'
+            for j in range(nq)
+        ])
+
+    all_vals = [v for row in z_data for v in row]
+    zmin_val, zmax_val = min(all_vals), max(all_vals)
+    show_text = nq <= 20
+
+    nat_order = list(range(nq))
+    col_nat   = [f'Q{j+1}' for j in nat_order]
+    z_nat, txt_nat, hov_nat = [], [], []
+    for ri, row_name in enumerate(row_names):
+        z_nat.append([z_data[ri][order.index(j)] for j in nat_order])
+        txt_nat.append([f'{z_nat[-1][j]:.0%}' for j in range(nq)])
+        hov_nat.append([
+            f'<b>Q{j+1}: {std_name(q["Content_Std"].tolist()[j], 35)}</b><br>'
+            f'{str(q["Question"].tolist()[j]).strip()}<br><br>'
+            f'{row_name}: {z_nat[-1][j]:.0%} correct'
+            for j in nat_order
+        ])
+
+    fig = go.Figure(go.Heatmap(
+        z=z_data, x=col_labels, y=row_names,
+        colorscale=[[0, C['red']], [0.5, C['orange']], [1.0, C['teal']]],
+        zmin=zmin_val, zmax=zmax_val,
+        xgap=4, ygap=4,
+        text=text_data, texttemplate='%{text}' if show_text else '',
+        textfont=dict(size=11, color='white'),
+        hoverinfo='text', hovertext=hover_data,
+        showscale=True,
+        colorbar=dict(title='% Correct', tickformat='.0%',
+                      tickvals=[zmin_val, (zmin_val+zmax_val)/2, zmax_val],
+                      ticktext=[f'{zmin_val:.0%}', f'{(zmin_val+zmax_val)/2:.0%}', f'{zmax_val:.0%}']),
+    ))
+    fig.add_shape(type='line', xref='paper', yref='y',
+                  x0=0, x1=1, y0=0.5, y1=0.5,
+                  line=dict(color='white', width=10), layer='above')
+    fig.update_layout(**LAYOUT,
+        title='',
+        height=max(240, 80 + 70 * len(row_names)),
+        xaxis=dict(side='top', title='', tickfont=dict(size=11), showgrid=False, ticklen=8),
+        yaxis=dict(autorange='reversed', tickfont=dict(size=12), showgrid=False, ticklen=8),
+        margin=dict(l=95, r=20, t=70, b=20),
+    )
+
+    chart_div = fig.to_html(full_html=False, include_plotlyjs=False,
+                            config={'displayModeBar': False, 'responsive': True})
+
+    m = _re.search(r'<div id="([^"]+)"', chart_div)
+    fig_id = m.group(1) if m else 'plotly-diff'
+
+    sorted_js  = json.dumps({'x': col_labels, 'z': z_data,  'text': text_data, 'hovertext': hover_data})
+    natural_js = json.dumps({'x': col_nat,    'z': z_nat,   'text': txt_nat,   'hovertext': hov_nat})
+
+    btn_html = (
+        f'<div class="q-btns">'
+        f'<button class="q-btn q-btn-active" data-view="sorted" data-fig="{fig_id}">Hardest → Easiest</button>'
+        f'<button class="q-btn" data-view="natural" data-fig="{fig_id}">Question Order</button>'
+        f'</div>'
+    )
+
+    return f'''{chart_div}
+{btn_html}
+<script>
+(function(){{
+  var sorted={sorted_js};
+  var natural={natural_js};
+  function attach(){{
+    var el=document.getElementById('{fig_id}');
+    if(!el){{setTimeout(attach,80);return;}}
+    document.querySelectorAll('.q-btn[data-fig="{fig_id}"]').forEach(function(btn){{
+      btn.addEventListener('click',function(){{
+        var d=this.dataset.view==='sorted'?sorted:natural;
+        Plotly.restyle(el,{{x:[d.x],z:[d.z],text:[d.text],hovertext:[d.hovertext]}});
+        document.querySelectorAll('.q-btn[data-fig="{fig_id}"]').forEach(function(b){{
+          b.classList.toggle('q-btn-active',b===btn);
+        }});
+      }});
+    }});
+  }}
+  attach();
+}})();
+</script>'''
+
+
 def distractor_html(df, q, nq):
     """Returns self-contained HTML: question text div + chart + buttons + JS listener.
     Layout (top to bottom): question text → chart → Q-buttons."""
