@@ -823,7 +823,7 @@ def build_html(df, q, std_name, nq):
         'skill':      fig_skill(df, q, nq),
     }
 
-    nav_links = ''.join(
+    nav_links = '<a href="../../index.html">← Home</a>' + ''.join(
         f'<a href="#{a}">{t}</a>'
         for a, t in [
             ('overview','Overview'), ('class-period','Class & Period'),
