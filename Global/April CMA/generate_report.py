@@ -810,7 +810,7 @@ def build_html(df, q, std_name, nq):
         section('7.  Key Takeaways', 'takeaways',
             takeaways_html(df, q, std_name, nq)),
 
-        section('Appendix — Technical', 'technical',
+        section('Appendix', 'appendix',
             to_div(figs['box']) + to_div(figs['scatter'])
             + (to_div(figs['oi']) if figs['oi'] is not None else '')
             + (to_div(figs['task_model']) if figs['task_model'] is not None else ''),
