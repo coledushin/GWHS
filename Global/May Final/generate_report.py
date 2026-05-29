@@ -870,6 +870,17 @@ def build_html(df, q, std_name, nq):
       color: #777; font-size: 0.85rem; margin: 6px 0 16px; font-style: italic;
     }}
     .plotly-graph-div {{ width: 100% !important; }}
+    .q-btns {{
+      display: flex; flex-wrap: wrap; gap: 5px;
+      margin-top: 10px; padding: 0 2px;
+    }}
+    .q-btn {{
+      font-size: 0.78rem; padding: 3px 9px; border-radius: 6px;
+      border: 1px solid #CCC; background: white; cursor: pointer;
+      color: {C["navy"]}; transition: background .1s, color .1s;
+    }}
+    .q-btn:hover {{ background: #f0f2f5; }}
+    .q-btn-active {{ background: {C["navy"]} !important; color: white !important; border-color: {C["navy"]} !important; }}
     footer {{ text-align: center; padding: 28px; font-size: 0.78rem; color: #aaa; }}
     @media (max-width: 640px) {{
       header {{ padding: 12px 16px; flex-direction: column; align-items: flex-start; }}
