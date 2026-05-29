@@ -238,6 +238,9 @@ def fig_class_dist(df, nq):
 
 
 def fig_difficulty(df, q, std_name, nq):
+    """Returns (fig, hard_cfg, nat_cfg) — fig has no updatemenus."""
+    import re as _re
+
     overall_p     = [df[f'Q{i}'].mean() for i in range(1, nq + 1)]
     order         = list(np.argsort(overall_p))          # hardest first
     q_nums_sorted = [order[j] + 1 for j in range(nq)]
@@ -251,7 +254,7 @@ def fig_difficulty(df, q, std_name, nq):
     for row_name in row_names:
         fdf   = df if row_name == 'Overall' else df[df['Class'] == row_name]
         n     = len(fdf)
-        row_p = [fdf[f'Q{q_nums_sorted[j]}'].mean() for j in range(nq)]
+        row_p = [float(fdf[f'Q{q_nums_sorted[j]}'].mean()) for j in range(nq)]
         z_data.append(row_p)
         text_data.append([f'{p:.0%}' for p in row_p])
         hover_data.append([
@@ -264,6 +267,20 @@ def fig_difficulty(df, q, std_name, nq):
 
     all_vals = [v for row in z_data for v in row]
     zmin_val, zmax_val = min(all_vals), max(all_vals)
+
+    # Natural (question-number) order
+    nat_order = list(range(nq))
+    col_nat   = [f'Q{j+1}' for j in nat_order]
+    z_nat, txt_nat, hov_nat = [], [], []
+    for ri, row_name in enumerate(row_names):
+        z_nat.append([float(z_data[ri][order.index(j)]) for j in nat_order])
+        txt_nat.append([f'{z_nat[-1][j]:.0%}' for j in range(nq)])
+        hov_nat.append([
+            f'<b>Q{j+1}: {std_name(q["Content_Std"].tolist()[j], 35)}</b><br>'
+            f'{str(q["Question"].tolist()[j]).strip()}<br><br>'
+            f'{row_name}: {z_nat[-1][j]:.0%} correct'
+            for j in nat_order
+        ])
 
     show_text = nq <= 20
     fig = go.Figure(go.Heatmap(
@@ -280,48 +297,66 @@ def fig_difficulty(df, q, std_name, nq):
                       tickvals=[zmin_val, (zmin_val+zmax_val)/2, zmax_val],
                       ticktext=[f'{zmin_val:.0%}', f'{(zmin_val+zmax_val)/2:.0%}', f'{zmax_val:.0%}']),
     ))
-    # Also build question-number order version for toggle
-    nat_order   = list(range(nq))                          # Q1, Q2, … Qn
-    col_nat     = [f'Q{j+1}' for j in nat_order]
-    z_nat, txt_nat, hov_nat = [], [], []
-    for ri, row_name in enumerate(row_names):
-        z_nat.append([z_data[ri][order.index(j)] for j in nat_order])
-        txt_nat.append([f'{z_nat[-1][j]:.0%}' for j in range(nq)])
-        hov_nat.append([
-            f'<b>Q{j+1}: {std_name(q["Content_Std"].tolist()[j], 35)}</b><br>'
-            f'{str(q["Question"].tolist()[j]).strip()}<br><br>'
-            f'{row_name}: {z_nat[-1][j]:.0%} correct'
-            for j in nat_order
-        ])
-
-    sort_btns = [
-        dict(label='Hardest → Easiest', method='update',
-             args=[{'x': [col_labels], 'z': [z_data], 'text': [text_data],
-                    'hovertext': [hover_data]}]),
-        dict(label='Question Order', method='update',
-             args=[{'x': [col_nat],   'z': [z_nat],  'text': [txt_nat],
-                    'hovertext': [hov_nat]}]),
-    ]
-
     fig.update_layout(**LAYOUT,
         title='',
         height=max(240, 80 + 70 * len(row_names)),
-        xaxis=dict(side='top', title='', tickfont=dict(size=11), showgrid=False,
-                   ticklen=8),
-        yaxis=dict(autorange='reversed', tickfont=dict(size=12), showgrid=False,
-                   ticklen=8),
-        updatemenus=[dict(
-            type='buttons', buttons=sort_btns, direction='right',
-            showactive=True, x=0, xanchor='left', y=-0.1, yanchor='top',
-            bgcolor='white', bordercolor='#CCCCCC', font=dict(size=10),
-        )],
+        xaxis=dict(side='top', title='', tickfont=dict(size=11), showgrid=False, ticklen=8),
+        yaxis=dict(autorange='reversed', tickfont=dict(size=12), showgrid=False, ticklen=8),
     )
-    # White line between Overall row (y=0) and first class row (y=1)
     fig.add_shape(type='line', xref='paper', yref='y',
                   x0=0, x1=1, y0=0.5, y1=0.5,
                   line=dict(color='white', width=10), layer='above')
-    fig.update_layout(margin=dict(l=95, r=20, t=70, b=60))
-    return fig
+    fig.update_layout(margin=dict(l=95, r=20, t=70, b=20))
+
+    hard_cfg = {'x': [col_labels], 'z': [z_data],  'text': [text_data], 'hovertext': [hover_data]}
+    nat_cfg  = {'x': [col_nat],   'z': [z_nat],    'text': [txt_nat],   'hovertext': [hov_nat]}
+    return fig, hard_cfg, nat_cfg
+
+
+def difficulty_html(df, q, std_name, nq):
+    import re as _re
+    fig, hard_cfg, nat_cfg = fig_difficulty(df, q, std_name, nq)
+
+    chart_div = fig.to_html(full_html=False, include_plotlyjs=False,
+                            config={'displayModeBar': False, 'responsive': True})
+    m = _re.search(r'<div id="([^"]+)"', chart_div)
+    fig_id = m.group(1) if m else 'plotly-diff'
+
+    hard_js = json.dumps(hard_cfg)
+    nat_js  = json.dumps(nat_cfg)
+    bid     = fig_id[-8:]
+
+    btn_html = (
+        f'<div class="q-btns" style="margin-top:10px">'
+        f'<button class="q-btn q-btn-active" id="diff-hard-{bid}">Hardest → Easiest</button>'
+        f'<button class="q-btn" id="diff-nat-{bid}">Question Order</button>'
+        f'</div>'
+    )
+
+    script = f'''
+<script>
+(function(){{
+  var hardCfg={hard_js};
+  var natCfg={nat_js};
+  function attach(){{
+    var el=document.getElementById('{fig_id}');
+    if(!el){{setTimeout(attach,80);return;}}
+    var bH=document.getElementById('diff-hard-{bid}');
+    var bN=document.getElementById('diff-nat-{bid}');
+    bH.addEventListener('click',function(){{
+      Plotly.restyle(el,hardCfg);
+      bH.classList.add('q-btn-active'); bN.classList.remove('q-btn-active');
+    }});
+    bN.addEventListener('click',function(){{
+      Plotly.restyle(el,natCfg);
+      bN.classList.add('q-btn-active'); bH.classList.remove('q-btn-active');
+    }});
+  }}
+  attach();
+}})();
+</script>'''
+
+    return chart_div + btn_html + script
 
 
 def distractor_html(df, q, nq):
@@ -858,14 +893,13 @@ def build_html(df, q, std_name, nq):
     today  = date.today().strftime('%B %d, %Y')
 
     figs = {
-        'hist':       fig_histogram(df, nq),
-        'cp_bar':     fig_class_bar(df, nq),
-        'cp_dist':    fig_class_dist(df, nq),
-        'diff':       fig_difficulty(df, q, std_name, nq),
-        'grp':        fig_groups(df, nq),
-        'box':        fig_boxplot(df, nq),
-        'scatter':    fig_scatter(df, q, std_name, nq),
-        'oi':         fig_oi(df, q, nq),
+        'hist':          fig_histogram(df, nq),
+        'cp_bar':        fig_class_bar(df, nq),
+        'cp_dist':       fig_class_dist(df, nq),
+        'grp':           fig_groups(df, nq),
+        'box':           fig_boxplot(df, nq),
+        'scatter':       fig_scatter(df, q, std_name, nq),
+        'oi':            fig_oi(df, q, nq),
         'task_model':    fig_task_model(df, q, nq),
         'skill':         fig_skill(df, q, nq),
         'stimulus_type': fig_stimulus_type(df, q, nq),
@@ -892,7 +926,7 @@ def build_html(df, q, std_name, nq):
 
         section('3.  Which Questions Were Hardest?', 'difficulty',
             f'<div class="scroll-x"><div style="min-width:{max(520, NQ * 34)}px">'
-            + to_div(figs['diff']) + '</div></div>'),
+            + difficulty_html(df, q, std_name, NQ) + '</div></div>'),
 
         section('4.  What Did Students Select?', 'distractor',
             distractor_html(df, q, nq),
