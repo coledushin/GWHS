@@ -102,6 +102,8 @@ def load_data():
         rename[scores_raw.columns[10 + NQ + i]] = c
 
     df = scores_raw.rename(columns=rename).dropna(subset=['Class']).copy()
+    df[answer_cols] = df[answer_cols].replace(r'^\s*$', np.nan, regex=True)
+    df[answer_cols] = df[answer_cols].apply(pd.to_numeric, errors='coerce')
     df[correct_cols] = df[correct_cols].apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
     df['MC_Score'] = df[correct_cols].sum(axis=1)
     df['MC_Pct']   = df['MC_Score'] / NQ
@@ -114,6 +116,7 @@ def load_data():
     # Rename by original column name so any sheet layout works
     q = q.rename(columns={
         'CMA #':        'Q_Num',
+        '#':            'Q_Num',
         'Source #':     'Source_Num',
         'Full Answer':  'Full_Answer',
         'Stimulus Type':'Stimulus_Type',
@@ -341,7 +344,7 @@ def distractor_html(df, q, nq):
         ca    = int(qrow['Answer'])
         opts  = ([str(qrow[f'Opt{j}']).strip() for j in range(1, 5)]
                  if has_opts else [str(j) for j in range(1, 5)])
-        answered = df[f'Q{q_num}_ans'].dropna().astype(int)
+        answered = pd.to_numeric(df[f'Q{q_num}_ans'], errors='coerce').dropna().astype(int)
         total    = len(answered)
         counts   = answered.value_counts().reindex([1, 2, 3, 4], fill_value=0)
         pcts     = [counts[j] / total if total > 0 else 0 for j in range(1, 5)]
