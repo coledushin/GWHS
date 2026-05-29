@@ -746,32 +746,34 @@ def kpi_html(df, nq):
 
 
 def takeaways_html(df, q, std_name, nq):
-    # Group questions by content standard — average p-values so each standard appears once
     from collections import defaultdict
-    std_groups = defaultdict(list)
-    for _, row in q.iterrows():
-        qn   = int(row['Q_Num'])
-        raw  = row.get('Content_Std', '')
-        code = '' if (raw is None or str(raw).strip().lower() in ('nan', 'none', ''))                else str(raw).strip()
-        std_groups[code or f'Q{qn}'].append(qn)
+    import uuid
 
-    std_items = []
-    for code, qns in std_groups.items():
-        avg_p = sum(df[f'Q{qn}'].mean() for qn in qns) / len(qns)
-        label = std_name(code, 50) if code and not code.startswith('Q') else ''
-        # Show which question numbers are grouped
-        q_label = ', '.join(f'Q{n}' for n in sorted(qns))
-        std_items.append((q_label, avg_p, label))
+    container_id = 'tk-' + uuid.uuid4().hex[:8]
+    views = ['Overall'] + sorted(df['Class'].unique().tolist())
 
-    reteach = sorted([(ql,p,lbl) for ql,p,lbl in std_items if p < 0.50],      key=lambda x:x[1])
-    review  = sorted([(ql,p,lbl) for ql,p,lbl in std_items if 0.50<=p<0.70],  key=lambda x:x[1])
-    strong  = sorted([(ql,p,lbl) for ql,p,lbl in std_items if p >= 0.70],     key=lambda x:-x[1])
+    def std_items_for(fdf):
+        std_groups = defaultdict(list)
+        for _, row in q.iterrows():
+            qn   = int(row['Q_Num'])
+            raw  = row.get('Content_Std', '')
+            code = '' if (raw is None or str(raw).strip().lower() in ('nan', 'none', '')) \
+                   else str(raw).strip()
+            std_groups[code or f'Q{qn}'].append(qn)
+        items = []
+        for code, qns in std_groups.items():
+            avg_p = sum(fdf[f'Q{qn}'].mean() for qn in qns) / len(qns)
+            label = std_name(code, 50) if code and not code.startswith('Q') else ''
+            q_label = ', '.join(f'Q{n}' for n in sorted(qns))
+            items.append((q_label, avg_p, label))
+        return items
 
     def panel(title, subtitle, items, color, bg):
         rows = ''.join(
             f'<tr>'
             f'<td style="padding:5px 8px">{lbl or ql}</td>'
-            f'<td style="font-weight:700;color:{color};padding:5px 8px;text-align:right;white-space:nowrap">{p:.0%}</td>'
+            f'<td style="font-weight:700;color:{color};padding:5px 8px;'
+            f'text-align:right;white-space:nowrap">{p:.0%}</td>'
             f'</tr>'
             for ql, p, lbl in items
         ) or f'<tr><td colspan="2" style="color:#888;padding:8px;font-style:italic">None</td></tr>'
@@ -781,11 +783,50 @@ def takeaways_html(df, q, std_name, nq):
                 f'<div style="font-size:0.82rem;color:#888;margin-bottom:10px;font-style:italic">{subtitle}</div>'
                 f'<table style="width:100%;border-collapse:collapse;font-size:0.9rem">{rows}</table></div>')
 
-    return (f'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:20px">'
-            + panel('RETEACH', 'Below 50% correct', reteach, C['red'],    '#fdf0f1')
-            + panel('REVIEW',  '50–70% correct',    review,  C['orange'], '#fef8f0')
-            + panel('STRONG',  'Above 70% correct', strong,  C['teal'],   '#f0fbf8')
-            + '</div>')
+    def panels_html(fdf):
+        items   = std_items_for(fdf)
+        reteach = sorted([(ql,p,lbl) for ql,p,lbl in items if p < 0.50],     key=lambda x: x[1])
+        review  = sorted([(ql,p,lbl) for ql,p,lbl in items if 0.50<=p<0.70], key=lambda x: x[1])
+        strong  = sorted([(ql,p,lbl) for ql,p,lbl in items if p >= 0.70],    key=lambda x: -x[1])
+        return (f'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px">'
+                + panel('RETEACH', 'Below 50% correct', reteach, C['red'],    '#fdf0f1')
+                + panel('REVIEW',  '50–70% correct',    review,  C['orange'], '#fef8f0')
+                + panel('STRONG',  'Above 70% correct', strong,  C['teal'],   '#f0fbf8')
+                + '</div>')
+
+    view_divs = ''
+    for i, view in enumerate(views):
+        fdf     = df if view == 'Overall' else df[df['Class'] == view]
+        display = 'block' if i == 0 else 'none'
+        view_divs += (f'<div id="{container_id}-{i}" style="display:{display}">'
+                      + panels_html(fdf) + '</div>')
+
+    btns = ''.join(
+        f'<button class="q-btn{"  q-btn-active" if i == 0 else ""}" '
+        f'data-vi="{i}" data-ctr="{container_id}">{view}</button>'
+        for i, view in enumerate(views)
+    )
+    btn_row = f'<div class="q-btns" style="margin-bottom:4px">{btns}</div>'
+
+    script = f'''
+<script>
+(function(){{
+  var n={len(views)};
+  document.querySelectorAll('.q-btn[data-ctr="{container_id}"]').forEach(function(btn){{
+    btn.addEventListener('click',function(){{
+      var vi=parseInt(this.dataset.vi);
+      for(var i=0;i<n;i++){{
+        document.getElementById('{container_id}-'+i).style.display=(i===vi?'block':'none');
+      }}
+      document.querySelectorAll('.q-btn[data-ctr="{container_id}"]').forEach(function(b){{
+        b.classList.toggle('q-btn-active',b===btn);
+      }});
+    }});
+  }});
+}})();
+</script>'''
+
+    return btn_row + view_divs + script
 
 
 def to_div(fig):
