@@ -794,10 +794,6 @@ def fig_stimulus_type(df, q, nq):
         showlegend=False,
         width=0.4,
     ))
-    add_color_legend(fig)
-    fig.add_hline(y=0.70, line_dash='dash', line_color=C['navy'], opacity=0.4,
-                  annotation_text='70% target', annotation_position='top right',
-                  annotation_font=dict(size=10, color=C['navy']))
     fig.update_layout(**LAYOUT,
         title='Performance by Stimulus Type',
         height=380,
