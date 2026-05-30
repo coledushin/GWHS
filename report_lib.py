@@ -206,7 +206,7 @@ def fig_class_bar(df, nq):
                 text=[f"P{int(row['Period'])}"],
                 textposition='inside', insidetextanchor='end',
                 textfont=dict(color='white', size=11),
-                hovertemplate=f'{cls} Period {int(row["Period"])}: {row["mean"]:.1f}/{nq} avg (n={int(row["count"])})<extra></extra>',
+                hovertemplate=f'Avg {row["mean"]:.1f}/{nq}  (n={int(row["count"])})<extra></extra>',
                 showlegend=False, width=bar_width * 0.85,
             ))
         class_centers[cls] = current_x + (n_bars - 1) * bar_width / 2
@@ -234,9 +234,11 @@ def fig_class_dist(df, nq):
             x=x_pts, y=y_smooth, mode='lines',
             line=dict(color=color, width=2.5),
             name=f'{cls} (n={len(cls_df)})',
-            hovertemplate=f'{cls}: %{{y:.1%}} at score %{{x}}<extra></extra>',
+            hovertemplate='%{y:.1%} of class at score %{x}<extra></extra>',
         ))
-    fig.update_xaxes(title_text=f'Score (out of {nq})', tickvals=list(range(nq + 1)),
+    tick_step = max(1, nq // 10)
+    fig.update_xaxes(title_text=f'Score (out of {nq})',
+                     tickvals=list(range(0, nq + 1, tick_step)),
                      showgrid=False, zeroline=False)
     fig.update_yaxes(title_text='Share of Class', tickformat='.0%',
                      showgrid=True, gridcolor='#EEEEEE', zeroline=False)
@@ -250,39 +252,47 @@ def difficulty_html(df, q, std_name, nq):
     overall_p     = [df[f'Q{i}'].mean() for i in range(1, nq + 1)]
     order         = list(np.argsort(overall_p))
     q_nums_sorted = [order[j] + 1 for j in range(nq)]
-    col_labels    = [f'Q{q_nums_sorted[j]}' for j in range(nq)]
+    col_labels    = [f'{q_nums_sorted[j]}' for j in range(nq)]
     full_q        = [str(q['Question'].tolist()[order[j]]).strip() for j in range(nq)]
     answers       = [str(q['Full_Answer'].tolist()[order[j]]).strip() for j in range(nq)]
     std_labels    = [std_name(q['Content_Std'].tolist()[order[j]], 35) for j in range(nq)]
 
     row_names = ['Overall'] + sorted(df['Class'].unique().tolist())
+    ns        = []   # sample size per row, reused for both sort orders
     z_data, text_data, hover_data = [], [], []
     for row_name in row_names:
         fdf   = df if row_name == 'Overall' else df[df['Class'] == row_name]
         n     = len(fdf)
+        ns.append(n)
         row_p = [float(fdf[f'Q{q_nums_sorted[j]}'].mean()) for j in range(nq)]
         z_data.append(row_p)
         text_data.append([f'{p:.0%}' for p in row_p])
         hover_data.append([
-            f'<b>Q{q_nums_sorted[j]}: {std_labels[j]}</b><br>'
+            f'<b>{q_nums_sorted[j]}: {std_labels[j]}</b><br>'
             f'{full_q[j]}<br><br>'
-            f'✓ <b>Correct:</b> {answers[j]}<br>'
-            f'{row_name} (n={n}): {row_p[j]:.0%} correct'
+            f'✓ {answers[j]}<br>'
+            f'n={n}'
             for j in range(nq)
         ])
 
     all_vals = [v for row in z_data for v in row]
     zmin_val, zmax_val = min(all_vals), max(all_vals)
 
-    col_nat = [f'Q{j+1}' for j in range(nq)]
+    # Natural order — precompute answers in Q1…Qn order
+    nat_answers = [str(q['Full_Answer'].tolist()[j]).strip() for j in range(nq)]
+    nat_stds    = [std_name(q['Content_Std'].tolist()[j], 35) for j in range(nq)]
+    nat_qs      = [str(q['Question'].tolist()[j]).strip() for j in range(nq)]
+
+    col_nat = [f'{j+1}' for j in range(nq)]
     z_nat, txt_nat, hov_nat = [], [], []
     for ri, row_name in enumerate(row_names):
         z_nat.append([float(z_data[ri][order.index(j)]) for j in range(nq)])
         txt_nat.append([f'{z_nat[-1][j]:.0%}' for j in range(nq)])
         hov_nat.append([
-            f'<b>Q{j+1}: {std_name(q["Content_Std"].tolist()[j], 35)}</b><br>'
-            f'{str(q["Question"].tolist()[j]).strip()}<br><br>'
-            f'{row_name}: {z_nat[-1][j]:.0%} correct'
+            f'<b>{j+1}: {nat_stds[j]}</b><br>'
+            f'{nat_qs[j]}<br><br>'
+            f'✓ {nat_answers[j]}<br>'
+            f'n={ns[ri]}'
             for j in range(nq)
         ])
 
@@ -369,8 +379,8 @@ def distractor_html(df, q, nq):
             marker_line_color='white', marker_line_width=1.2,
             text=[f'{p:.0%}' for p in pcts], textposition='outside',
             hovertext=[
-                f'<b>Choice {j}: {opts[j-1]}</b><br>{pcts[j-1]:.0%} selected<br>'
-                + ('✓ <b>Correct answer</b>' if j == ca else '✗ Incorrect')
+                f'<b>{opts[j-1]}</b><br>'
+                + ('✓ Correct' if j == ca else '✗ Incorrect')
                 for j in range(1, 5)
             ],
             hoverinfo='text', visible=(q_num == 1), showlegend=False, cliponaxis=False,
@@ -392,7 +402,7 @@ def distractor_html(df, q, nq):
     texts_js = '[' + ','.join(json.dumps(q_text_map.get(i, '')) for i in range(1, nq + 1)) + ']'
     btn_items = ''.join(
         f'<button class="q-btn{"  q-btn-active" if q_num == 1 else ""}" '
-        f'data-qi="{q_num - 1}" data-fig="{fig_id}">Q{q_num}</button>'
+        f'data-qi="{q_num - 1}" data-fig="{fig_id}">{q_num}</button>'
         for q_num in range(1, nq + 1)
     )
 
@@ -527,13 +537,13 @@ def fig_scatter(df, q, std_name, nq):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=p_vals, y=pb_vals, mode='markers+text',
-        text=[f'Q{i}' for i in range(1, nq + 1)], textposition='top right',
+        text=[f'{i}' for i in range(1, nq + 1)], textposition='top right',
         textfont=dict(size=11, color=C['navy']),
         marker=dict(color=[pct_color(p) for p in p_vals], size=14,
                     line=dict(color='white', width=1.5)),
         hovertext=[
-            f'<b>Q{i+1}: {topics[i]}</b><br>{q_texts[i]}…<br><br>'
-            f'Difficulty: {p_vals[i]:.0%} correct<br>Discrimination (PB): {pb_vals[i]:.2f}'
+            f'<b>{i+1}: {topics[i]}</b><br>{q_texts[i]}…<br><br>'
+            f'Difficulty: {p_vals[i]:.0%}<br>Point-biserial: {pb_vals[i]:.2f}'
             for i in range(nq)],
         hoverinfo='text', showlegend=False,
     ))
@@ -581,7 +591,7 @@ def fig_oi(df, q, nq):
         marker_color=[pct_color(v) for v in vals],
         marker_line_color='white', marker_line_width=1.5,
         text=[f'{v:.0%}' for v in vals], textposition='outside', cliponaxis=False,
-        hovertemplate='%{x}<br>%{y:.0%} avg correct (%{customdata} questions)<extra></extra>',
+        hovertemplate='%{customdata} questions<extra></extra>',
         customdata=q_counts, showlegend=False, width=0.4,
     ))
     fig.update_layout(**LAYOUT,
@@ -611,10 +621,10 @@ def fig_task_model(df, q, nq):
     for tm in task_models:
         tm_qs  = q[q['Task_Model'].astype(str).str.strip() == tm]['Q_Num'].tolist()
         avg    = float(np.mean([df[f'Q{qn}'].mean() for qn in tm_qs]))
-        q_list = ', '.join(f'Q{qn}' for qn in sorted(tm_qs))
+        q_list = ', '.join(str(qn) for qn in sorted(tm_qs))
         labels.append(tm_num(tm))
         vals.append(avg)
-        hover_texts.append(f'<b>{tm}</b><br>Questions: {q_list}<br>Avg % correct: {avg:.0%}')
+        hover_texts.append(f'<b>{tm}</b><br>Questions: {q_list}')
 
     fig = go.Figure(go.Bar(
         x=labels, y=vals, marker_color=[pct_color(v) for v in vals],
@@ -645,10 +655,10 @@ def fig_skill(df, q, nq):
     for sk in skills:
         sk_qs  = q[q['Skill'].astype(str).str.strip() == sk]['Q_Num'].tolist()
         avg    = float(np.mean([df[f'Q{qn}'].mean() for qn in sk_qs]))
-        q_list = ', '.join(f'Q{qn}' for qn in sorted(sk_qs))
+        q_list = ', '.join(str(qn) for qn in sorted(sk_qs))
         labels.append(skill_label(sk))
         vals.append(avg)
-        hover_texts.append(f'<b>{sk}</b><br>Questions: {q_list}<br>Avg % correct: {avg:.0%}')
+        hover_texts.append(f'<b>{sk}</b><br>Questions: {q_list}')
 
     fig = go.Figure(go.Bar(
         x=labels, y=vals, marker_color=[pct_color(v) for v in vals],
@@ -678,14 +688,11 @@ def fig_stimulus_type(df, q, nq):
     for st in types:
         st_qs  = q[q['Stimulus_Type'].astype(str).str.strip() == st]['Q_Num'].tolist()
         avg    = float(np.mean([df[f'Q{qn}'].mean() for qn in st_qs]))
-        q_list = ', '.join(f'Q{qn}' for qn in sorted(st_qs))
+        q_list = ', '.join(str(qn) for qn in sorted(st_qs))
         labels.append(st)
         vals.append(avg)
         colors.append(stim_colors.get(st, C['gray']))
-        hover_texts.append(
-            f'<b>{st}</b><br>Questions: {q_list}<br>'
-            f'Count: {len(st_qs)} questions<br>Avg % correct: {avg:.0%}'
-        )
+        hover_texts.append(f'Questions: {q_list}')
     fig = go.Figure(go.Bar(
         x=labels, y=vals, marker_color=colors,
         marker_line_color='white', marker_line_width=1.5,
