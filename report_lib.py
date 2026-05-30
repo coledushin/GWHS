@@ -529,23 +529,43 @@ def fig_boxplot(df, nq):
     return fig
 
 
-def fig_scatter(df, q, std_name, nq):
-    p_vals  = [df[f'Q{i}'].mean() for i in range(1, nq + 1)]
-    pb_vals = [stats.pointbiserialr(df[f'Q{i}'], df['MC_Score'])[0] for i in range(1, nq + 1)]
+def scatter_html(df, q, std_name, nq):
+    """Difficulty vs. discrimination scatter with Overall / per-class toggle."""
     topics  = [std_name(q.loc[q['Q_Num'] == i, 'Content_Std'].values[0], 60) for i in range(1, nq + 1)]
     q_texts = [str(q.loc[q['Q_Num'] == i, 'Question'].values[0]).strip()[:80] for i in range(1, nq + 1)]
+
+    def compute(fdf):
+        p  = [float(fdf[f'Q{i}'].mean()) for i in range(1, nq + 1)]
+        pb = []
+        for i in range(1, nq + 1):
+            try:
+                v = stats.pointbiserialr(fdf[f'Q{i}'], fdf['MC_Score'])[0]
+                pb.append(float(v) if not np.isnan(v) else 0.0)
+            except Exception:
+                pb.append(0.0)
+        colors = [pct_color(v) for v in p]
+        hover  = [
+            f'<b>{i}: {topics[i-1]}</b><br>{q_texts[i-1]}…<br><br>'
+            f'Difficulty: {p[i-1]:.0%}<br>Point-biserial: {pb[i-1]:.2f}'
+            for i in range(1, nq + 1)
+        ]
+        return p, pb, colors, hover
+
+    views = ['Overall'] + sorted(df['Class'].unique().tolist())
+    all_data = {}
+    for view in views:
+        fdf = df if view == 'Overall' else df[df['Class'] == view]
+        all_data[view] = compute(fdf)
+
+    p0, pb0, c0, h0 = all_data['Overall']
+
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=p_vals, y=pb_vals, mode='markers+text',
+        x=p0, y=pb0, mode='markers+text',
         text=[f'{i}' for i in range(1, nq + 1)], textposition='top right',
         textfont=dict(size=11, color=C['navy']),
-        marker=dict(color=[pct_color(p) for p in p_vals], size=14,
-                    line=dict(color='white', width=1.5)),
-        hovertext=[
-            f'<b>{i+1}: {topics[i]}</b><br>{q_texts[i]}…<br><br>'
-            f'Difficulty: {p_vals[i]:.0%}<br>Point-biserial: {pb_vals[i]:.2f}'
-            for i in range(nq)],
-        hoverinfo='text', showlegend=False,
+        marker=dict(color=c0, size=14, line=dict(color='white', width=1.5)),
+        hovertext=h0, hoverinfo='text', showlegend=False,
     ))
     for label, color in [('Hard (<50%)', C['red']), ('Medium (50–70%)', C['orange']), ('Easy (>70%)', C['teal'])]:
         fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
@@ -560,10 +580,54 @@ def fig_scatter(df, q, std_name, nq):
         legend=dict(orientation='h', y=-0.16, x=0.5, xanchor='center', font=dict(size=11)),
         xaxis=dict(tickformat='.0%', title='Difficulty (% correct)',
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False, range=[0, 1.05]),
-        yaxis=dict(title='Discrimination (point-biserial)',
+        yaxis=dict(title='Point-biserial',
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
     )
-    return fig
+
+    chart_div = fig.to_html(full_html=False, include_plotlyjs=False,
+                            config={'displayModeBar': False, 'responsive': True})
+    m = _re.search(r'<div id="([^"]+)"', chart_div)
+    fig_id = m.group(1) if m else 'plotly-scatter'
+    ctr_id = 'sc-' + fig_id[-8:]
+
+    # Precompute restyle configs for each view (trace 0 only)
+    configs_js = json.dumps({
+        view: {
+            'x':            [all_data[view][0]],
+            'y':            [all_data[view][1]],
+            'marker.color': [all_data[view][2]],
+            'hovertext':    [all_data[view][3]],
+        }
+        for view in views
+    })
+
+    btns = ''.join(
+        f'<button class="q-btn{"  q-btn-active" if i == 0 else ""}" '
+        f'data-view="{view}" data-ctr="{ctr_id}">{view}</button>'
+        for i, view in enumerate(views)
+    )
+
+    script = f'''
+<script>
+(function(){{
+  var cfgs={configs_js};
+  function attach(){{
+    var el=document.getElementById('{fig_id}');
+    if(!el){{setTimeout(attach,80);return;}}
+    document.querySelectorAll('.q-btn[data-ctr="{ctr_id}"]').forEach(function(btn){{
+      btn.addEventListener('click',function(){{
+        Plotly.restyle(el, cfgs[this.dataset.view], [0]);
+        document.querySelectorAll('.q-btn[data-ctr="{ctr_id}"]').forEach(function(b){{
+          b.classList.toggle('q-btn-active', b===btn);
+        }});
+      }});
+    }});
+  }}
+  attach();
+}})();
+</script>'''
+
+    return f'<div class="q-btns" style="margin-bottom:4px">{btns}</div>\n{chart_div}{script}'
 
 
 def fig_oi(df, q, nq):
@@ -840,7 +904,6 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
         'cp_dist':       fig_class_dist(df, nq),
         'grp':           fig_groups(df, nq),
         'box':           fig_boxplot(df, nq),
-        'scatter':       fig_scatter(df, q, std_name, nq),
         'oi':            fig_oi(df, q, nq),
         'task_model':    fig_task_model(df, q, nq),
         'skill':         fig_skill(df, q, nq),
@@ -887,7 +950,7 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
             takeaways_html(df, q, std_name, nq)),
 
         section('Appendix', 'appendix',
-            to_div(figs['box']) + to_div(figs['scatter'])
+            to_div(figs['box']) + scatter_html(df, q, std_name, nq)
             + '<div class="chart-grid-2">'
             + _opt(figs['oi'])
             + _opt(figs['stimulus_type'])
