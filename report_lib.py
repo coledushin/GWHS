@@ -572,27 +572,23 @@ def fig_oi(df, q, nq):
     if len(categories) < 2:
         return None
 
-    groups  = ['Overall'] + sorted(df['Class'].unique().tolist())
-    palette = [C['navy']] + [CLASS_COLORS.get(c, C['blue']) for c in sorted(df['Class'].unique())]
-    fig = go.Figure()
-    for grp, color in zip(groups, palette):
-        fdf      = df if grp == 'Overall' else df[df['Class'] == grp]
-        n        = len(fdf)
-        vals     = [float(np.mean([fdf[f'Q{qn}'].mean() for qn in qns])) for _, qns in categories]
-        q_counts = [len(qns) for _, qns in categories]
-        fig.add_trace(go.Bar(
-            x=[lbl for lbl, _ in categories], y=vals, name=grp,
-            marker_color=color, marker_line_color='white', marker_line_width=1,
-            text=[f'{v:.0%}' for v in vals], textposition='outside', cliponaxis=False,
-            hovertemplate='<b>' + grp + f' (n={n})</b><br>%{{x}}<br>%{{y:.0%}} avg correct (%{{customdata}} Qs)<extra></extra>',
-            customdata=q_counts,
-        ))
+    labels   = [lbl for lbl, _ in categories]
+    vals     = [float(np.mean([df[f'Q{qn}'].mean() for qn in qns])) for _, qns in categories]
+    q_counts = [len(qns) for _, qns in categories]
+
+    fig = go.Figure(go.Bar(
+        x=labels, y=vals,
+        marker_color=[pct_color(v) for v in vals],
+        marker_line_color='white', marker_line_width=1.5,
+        text=[f'{v:.0%}' for v in vals], textposition='outside', cliponaxis=False,
+        hovertemplate='%{x}<br>%{y:.0%} avg correct (%{customdata} questions)<extra></extra>',
+        customdata=q_counts, showlegend=False, width=0.4,
+    ))
     fig.update_layout(**LAYOUT,
-        title='Performance: Outside Information Required vs. Not', height=380, barmode='group',
+        title='Outside Information Required vs. Not', height=380,
         xaxis=dict(showgrid=False, zeroline=False),
         yaxis=dict(tickformat='.0%', title='Average % Correct', range=[0, 1.3],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
-        legend=dict(orientation='h', y=-0.18, x=0.5, xanchor='center'),
     )
     return fig
 
@@ -885,7 +881,7 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
 
         section('Appendix', 'appendix',
             to_div(figs['box']) + to_div(figs['scatter'])
-            + '<div class="chart-grid">'
+            + '<div class="chart-grid-2">'
             + _opt(figs['oi'])
             + _opt(figs['stimulus_type'])
             + _opt(figs['task_model'])
@@ -939,6 +935,12 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
     .plotly-graph-div {{ width: 100% !important; }}
     .chart-grid {{
       display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;
+    }}
+    .chart-grid-2 {{
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
+    }}
+    @media (max-width: 640px) {{
+      .chart-grid-2 {{ grid-template-columns: 1fr; }}
     }}
     .scroll-x {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
     .scroll-x > * {{ min-width: 520px; }}
