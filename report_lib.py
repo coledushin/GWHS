@@ -271,7 +271,7 @@ def difficulty_html(df, q, std_name, nq):
             f'<b>{q_nums_sorted[j]}: {std_labels[j]}</b><br>'
             f'{full_q[j]}<br><br>'
             f'✓ {answers[j]}<br>'
-            f'n={n}'
+            f'{row_p[j]:.0%} correct'
             for j in range(nq)
         ])
 
@@ -292,7 +292,7 @@ def difficulty_html(df, q, std_name, nq):
             f'<b>{j+1}: {nat_stds[j]}</b><br>'
             f'{nat_qs[j]}<br><br>'
             f'✓ {nat_answers[j]}<br>'
-            f'n={ns[ri]}'
+            f'{z_nat[-1][j]:.0%} correct'
             for j in range(nq)
         ])
 
