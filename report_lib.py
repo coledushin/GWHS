@@ -885,10 +885,12 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
 
         section('Appendix', 'appendix',
             to_div(figs['box']) + to_div(figs['scatter'])
+            + '<div class="chart-grid">'
             + _opt(figs['oi'])
             + _opt(figs['stimulus_type'])
             + _opt(figs['task_model'])
-            + _opt(figs['skill'])),
+            + _opt(figs['skill'])
+            + '</div>'),
     ])
 
     return f'''<!DOCTYPE html>
