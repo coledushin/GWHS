@@ -92,7 +92,9 @@ def load_data(file):
     questions  = pd.read_excel(file, sheet_name='Questions')
     std_sheet  = pd.read_excel(file, sheet_name='Content Standards')
 
-    NQ = len(questions)
+    # NQ = number of MC questions, detected from integer-named answer columns in Scores
+    mc_cols_raw = [c for c in scores_raw.columns if str(c).strip().isdigit()]
+    NQ = len(mc_cols_raw)
 
     cols = std_sheet.columns.tolist()
     cols[0], cols[1] = 'Code', 'Framework'
@@ -127,7 +129,9 @@ def load_data(file):
         'Option 1': 'Opt1', 'Option 2': 'Opt2',
         'Option 3': 'Opt3', 'Option 4': 'Opt4',
     })
-    q = q.sort_values('Q_Num').reset_index(drop=True)
+    q['Q_Num'] = pd.to_numeric(q['Q_Num'], errors='coerce')
+    q = q[q['Q_Num'].isin(range(1, NQ + 1))].sort_values('Q_Num').reset_index(drop=True)
+    q['Q_Num'] = q['Q_Num'].astype(int)
 
     answer_key = {}
     for _, row in q.iterrows():
@@ -135,10 +139,13 @@ def load_data(file):
         if pd.notna(ans):
             answer_key[int(row['Q_Num'])] = int(ans)
 
-    rename = {scores_raw.columns[k]: v for k, v in enumerate(
-        ['Class', 'Grade', 'Period', 'Student', 'ELL', 'IEP'])}
-    for i, c in enumerate(answer_cols):
-        rename[scores_raw.columns[10 + i]] = c
+    rename = {
+        'Student Name': 'Student',
+        'ELL?': 'ELL',
+        'IEP?': 'IEP',
+    }
+    for raw_col, i in zip(mc_cols_raw, range(1, NQ + 1)):
+        rename[raw_col] = f'Q{i}_ans'
 
     df = scores_raw.rename(columns=rename).dropna(subset=['Class']).copy()
     for i in range(1, NQ + 1):
