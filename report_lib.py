@@ -148,6 +148,8 @@ def load_data(file):
         rename[raw_col] = f'Q{i}_ans'
 
     df = scores_raw.rename(columns=rename).dropna(subset=['Class']).copy()
+    # Drop rows where every answer choice is blank
+    df = df.dropna(subset=answer_cols, how='all')
     for i in range(1, NQ + 1):
         student_ans = pd.to_numeric(df[f'Q{i}_ans'], errors='coerce')
         df[f'Q{i}'] = (student_ans == answer_key.get(i, -1)).astype(int)
@@ -988,9 +990,10 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
 
         section('2.  Class & Period Performance', 'class-period',
             '<div class="chart-grid">'
-            + to_div(figs['cp_bar']) + to_div(figs['cp_dist'])
+            + to_div(figs['cp_bar'])
             + (to_div(figs['cp_grade']) if figs['cp_grade'] is not None else '')
-            + '</div>'),
+            + '</div>'
+            + to_div(figs['cp_dist'])),
 
         section('3.  Which Questions Were Hardest?', 'difficulty',
             f'<div class="scroll-x"><div style="min-width:{max(520, nq * 34)}px">'
