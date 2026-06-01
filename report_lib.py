@@ -233,6 +233,47 @@ def fig_class_bar(df, nq):
     return fig
 
 
+def fig_grade_bar(df, nq):
+    """Average score by grade. Returns None if Grade column missing or only one grade.
+    Only uses values in the range 6–13 (K-12 grade levels)."""
+    if 'Grade' not in df.columns:
+        return None
+    valid = df['Grade'].dropna()
+    valid = pd.to_numeric(valid, errors='coerce').dropna()
+    valid = valid[valid.between(6, 13)]
+    grades = sorted(valid.unique())
+    if len(grades) < 2:
+        return None
+    grade_palette = [C['blue'], C['orange'], C['teal'], C['green'], C['red']]
+    df_g = df[pd.to_numeric(df['Grade'], errors='coerce').between(6, 13)]
+    fig = go.Figure()
+    for i, grade in enumerate(grades):
+        g_df = df_g[df_g['Grade'] == grade]
+        mean_val = g_df['MC_Score'].mean()
+        n = len(g_df)
+        fig.add_trace(go.Bar(
+            x=[str(int(grade)) if float(grade).is_integer() else str(grade)],
+            y=[mean_val],
+            name=f'Grade {int(grade) if float(grade).is_integer() else grade}  (n={n})',
+            marker_color=grade_palette[i % len(grade_palette)],
+            marker_line_color='white', marker_line_width=1.5,
+            text=[f'{mean_val:.1f}'], textposition='outside',
+            width=0.45,
+            hovertemplate=f'Grade {grade}: {mean_val:.1f}/{nq} avg  (n={n})<extra></extra>',
+        ))
+    overall = df_g['MC_Score'].mean()
+    fig.add_hline(y=overall, line_dash='dot', line_color=C['navy'], opacity=0.5,
+                  annotation_text=f'Overall: {overall:.1f}',
+                  annotation_position='top right',
+                  annotation_font=dict(size=10, color=C['navy']))
+    fig.update_xaxes(title_text='Grade', showgrid=False, zeroline=False)
+    fig.update_yaxes(title_text=f'Avg Score (out of {nq})', range=[0, nq * 1.28],
+                     showgrid=True, gridcolor='#EEEEEE', zeroline=False)
+    fig.update_layout(**LAYOUT, title='Average Score by Grade', height=320,
+                      showlegend=False)
+    return fig
+
+
 def fig_class_dist(df, nq):
     classes = sorted(df['Class'].unique())
     fig = go.Figure()
@@ -528,7 +569,7 @@ def fig_boxplot(df, nq):
         fig.add_trace(go.Box(
             y=vals, name=cls,
             marker_color=color, line_color=color,
-            fillcolor=f'rgba({int(color[1:3],16)},{int(color[3:5],16)},{int(color[5:7],16)},0.35)',
+            fillcolor=hex_to_rgba(color, 0.35),
             boxpoints='all', jitter=0.35, pointpos=0,
             marker=dict(size=5, opacity=0.4, color=color),
             hovertemplate=f'{cls}: %{{y}}/{nq}<extra></extra>',
@@ -915,6 +956,7 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
         'hist':          fig_histogram(df, nq),
         'cp_bar':        fig_class_bar(df, nq),
         'cp_dist':       fig_class_dist(df, nq),
+        'cp_grade':      fig_grade_bar(df, nq),
         'grp':           fig_groups(df, nq),
         'box':           fig_boxplot(df, nq),
         'oi':            fig_oi(df, q, nq),
@@ -947,6 +989,7 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
         section('2.  Class & Period Performance', 'class-period',
             '<div class="chart-grid">'
             + to_div(figs['cp_bar']) + to_div(figs['cp_dist'])
+            + (to_div(figs['cp_grade']) if figs['cp_grade'] is not None else '')
             + '</div>'),
 
         section('3.  Which Questions Were Hardest?', 'difficulty',
@@ -1075,7 +1118,7 @@ def run(config):
     """
     global CLASS_COLORS
     if 'class_colors' in config:
-        CLASS_COLORS = config['class_colors']
+        CLASS_COLORS = {**CLASS_COLORS, **config['class_colors']}  # merge, not replace
 
     file      = config['file']
     title     = config['title']
