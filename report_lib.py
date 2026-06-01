@@ -112,21 +112,6 @@ def load_data(file):
     answer_cols  = [f'Q{i}_ans' for i in range(1, NQ + 1)]
     correct_cols = [f'Q{i}'     for i in range(1, NQ + 1)]
 
-    rename = {scores_raw.columns[k]: v for k, v in enumerate(
-        ['Class', 'Grade', 'Period', 'Student', 'ELL', 'IEP'])}
-    for i, c in enumerate(answer_cols):
-        rename[scores_raw.columns[10 + i]] = c
-    for i, c in enumerate(correct_cols):
-        rename[scores_raw.columns[10 + NQ + i]] = c
-
-    df = scores_raw.rename(columns=rename).dropna(subset=['Class']).copy()
-    df[correct_cols] = df[correct_cols].apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
-    df['MC_Score'] = df[correct_cols].sum(axis=1)
-    df['MC_Pct']   = df['MC_Score'] / NQ
-    df['MC_Blank'] = df[answer_cols].isna().sum(axis=1)
-    df['Is_ELL']   = df['ELL'].notna()
-    df['Is_IEP']   = df['IEP'].notna()
-
     q = questions.copy()
     q = q.rename(columns={
         'CMA #':         'Q_Num',    # CMA sheets
@@ -143,6 +128,27 @@ def load_data(file):
         'Option 3': 'Opt3', 'Option 4': 'Opt4',
     })
     q = q.sort_values('Q_Num').reset_index(drop=True)
+
+    answer_key = {}
+    for _, row in q.iterrows():
+        ans = row['Answer']
+        if pd.notna(ans):
+            answer_key[int(row['Q_Num'])] = int(ans)
+
+    rename = {scores_raw.columns[k]: v for k, v in enumerate(
+        ['Class', 'Grade', 'Period', 'Student', 'ELL', 'IEP'])}
+    for i, c in enumerate(answer_cols):
+        rename[scores_raw.columns[10 + i]] = c
+
+    df = scores_raw.rename(columns=rename).dropna(subset=['Class']).copy()
+    for i in range(1, NQ + 1):
+        student_ans = pd.to_numeric(df[f'Q{i}_ans'], errors='coerce')
+        df[f'Q{i}'] = (student_ans == answer_key.get(i, -1)).astype(int)
+    df['MC_Score'] = df[correct_cols].sum(axis=1)
+    df['MC_Pct']   = df['MC_Score'] / NQ
+    df['MC_Blank'] = df[answer_cols].isna().sum(axis=1)
+    df['Is_ELL']   = df['ELL'].notna()
+    df['Is_IEP']   = df['IEP'].notna()
 
     return df, q, std_lookup, std_name, answer_cols, correct_cols, NQ
 
