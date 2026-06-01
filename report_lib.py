@@ -263,11 +263,6 @@ def fig_grade_bar(df, nq):
             width=0.45,
             hovertemplate=f'Grade {grade}: {mean_val:.1f}/{nq} avg  (n={n})<extra></extra>',
         ))
-    overall = df_g['MC_Score'].mean()
-    fig.add_hline(y=overall, line_dash='dot', line_color=C['navy'], opacity=0.5,
-                  annotation_text=f'Overall: {overall:.1f}',
-                  annotation_position='top right',
-                  annotation_font=dict(size=10, color=C['navy']))
     fig.update_xaxes(title_text='Grade', showgrid=False, zeroline=False)
     fig.update_yaxes(title_text=f'Avg Score (out of {nq})', range=[0, nq * 1.28],
                      showgrid=True, gridcolor='#EEEEEE', zeroline=False)
