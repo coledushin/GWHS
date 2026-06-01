@@ -984,11 +984,18 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
             kpi_html(df, nq) + to_div(figs['hist'])),
 
         section('2.  Class & Period Performance', 'class-period',
-            '<div class="chart-grid">'
-            + to_div(figs['cp_bar'])
-            + (to_div(figs['cp_grade']) if figs['cp_grade'] is not None else '')
-            + '</div>'
-            + to_div(figs['cp_dist'])),
+            # With grade chart: bar + grade side by side, distribution full-width below
+            # Without grade chart: bar + distribution side by side
+            (
+                '<div class="chart-grid">'
+                + to_div(figs['cp_bar']) + to_div(figs['cp_grade'])
+                + '</div>'
+                + to_div(figs['cp_dist'])
+            ) if figs['cp_grade'] is not None else (
+                '<div class="chart-grid">'
+                + to_div(figs['cp_bar']) + to_div(figs['cp_dist'])
+                + '</div>'
+            )),
 
         section('3.  Which Questions Were Hardest?', 'difficulty',
             f'<div class="scroll-x"><div style="min-width:{max(520, nq * 34)}px">'
