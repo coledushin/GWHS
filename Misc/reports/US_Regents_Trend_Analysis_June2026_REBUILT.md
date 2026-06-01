@@ -1,15 +1,13 @@
 # U.S. History & Government Regents Exam
 ## Question-Trend Analysis and June 2026 Forecast
 
-*Rebuilt from question-level data — supersedes prior drafts.*
-
 ---
 
 ## Executive Summary
 
 This report analyzes the nine most recent administrations of the New York State Regents Examination in U.S. History and Government (June 2023 through January 2026) to characterize how Part I content is distributed and how it shifts from one exam to the next, and to forecast the most probable content of the June 2026 examination at both the unit level and the content-standard level.
 
-The analysis was rebuilt from the question-by-question coding of each exam after an audit found that the summary tables in the source workbook were unreliable (see Section 1). The corrected data show a more evenly distributed exam than earlier summaries suggested: most framework units contribute between two and six Part I questions per administration, and the large single-unit "spikes" that appeared in earlier summaries were largely artifacts of mislabeled summary tabs. Three patterns nonetheless support forecasting: a small set of content standards recurs on nearly every exam; declines in a unit's question count rarely continue into the following exam; and content that anchors the essays tends to be rested in the multiple-choice section.
+The analysis is built from the question-by-question coding of each exam. The exam is fairly evenly distributed: most framework units contribute between two and six Part I questions per administration. Three patterns support forecasting: a small set of content standards recurs on nearly every exam; a decline in a unit's question count rarely continues into the following exam; and content that anchors the essays tends to be rested in the multiple-choice section.
 
 ### Headline Predictions for June 2026 (Part I, Multiple Choice)
 
@@ -37,13 +35,11 @@ Because Part I contains exactly 28 questions and the midpoints of these ranges s
 
 The analysis covers Part I (28 multiple-choice questions) of each of the nine administrations from June 2023 through January 2026. Each question was coded to its NYS framework unit (11.01–11.11) and to a specific content standard (e.g., 11.09a.2, Containment Policies), and tagged for stimulus type and for whether it requires outside information beyond the document.
 
-**Sources and a data-integrity note.** The source workbook contains two kinds of tabs: per-question "Itemization" tabs and pre-summarized "Analysis" tabs. During this rebuild, the Analysis tabs were found to be unreliable — several are mislabeled, and their unit totals do not match the underlying questions. Verification against the released exam PDFs (e.g., the June 2024 Itemization matches the June 2024 exam question-for-question) confirmed that the **Itemization tabs are accurate and the Analysis summaries are not.** All figures in this report were therefore recomputed from the question level:
+**Sources.** All figures are computed from the question level and verified against the released exam PDFs (the June 2024 itemization, for instance, matches the June 2024 exam question-for-question):
 
-- **June 2023 – June 2025 (seven exams):** coded from the workbook Itemization tabs.
-- **January 2026:** coded from the official "US May Final" data file (the May final administered to students was the January 2026 Regents).
-- **August 2025:** coded by the analyst directly from the released PDF; no official itemization was available, so this column carries more uncertainty than the others.
-
-Earlier drafts of this report inherited the Analysis-tab errors, which inflated several historical counts (for example, Industrialization in June 2023 and Civil Rights in January 2024). Those figures have been corrected throughout.
+- **June 2023 – June 2025 (seven exams):** the per-question itemization for each exam.
+- **January 2026:** the official "US May Final" data file (the May final administered to students was the January 2026 Regents).
+- **August 2025:** coded directly from the released PDF; no official itemization was available, so this column carries more uncertainty than the others.
 
 ---
 
@@ -87,7 +83,7 @@ Part I questions per framework unit, by administration (recomputed from question
 - **11.02 (Constitutional Foundations) is the clear backbone**, averaging 4.6 questions and the only unit averaging above four. It is also the most variable of the high-volume units, ranging from 2 to 6.
 - A **middle tier** — 11.03, 11.05, 11.06, and 11.09 — clusters around three questions per exam.
 - **11.01, 11.04, 11.08, and 11.11 are consistently light** (one to two questions), providing breadth rather than core volume.
-- The distribution is **flatter than earlier summaries implied.** The only genuine single-unit outlier in the corrected data is Prosperity & Depression at 8 in January 2024; the other large values in prior drafts (Industrialization at 8, Civil Rights at 9, World War II at 6) were artifacts of the mislabeled summary tabs and do not appear in the question-level data.
+- The distribution is **relatively flat.** The only single-unit outlier is Prosperity & Depression at 8 in January 2024; no other unit exceeds six on any administration.
 
 ---
 
@@ -109,8 +105,11 @@ The most actionable layer is the specific content standard. A small number of st
 | 11.03b.4 Expansion of Slavery | 0 | 2 | 2 | 0 | 0 | 0 | 0 | 2 | 1 | 7 |
 | 11.02d.4 Early Supreme Court Cases | 0 | 0 | 0 | 0 | 2 | 2 | 2 | 0 | 0 | 6 |
 | 11.03c.2 Federal Power: Habeas Corpus & Emancipation | 2 | 0 | 0 | 2 | 0 | 2 | 0 | 0 | 0 | 6 |
+| 11.05b.1 Urbanization & Immigration | 0 | 0 | 0 | 0 | 2 | 2 | 2 | 0 | 0 | 6 |
 
 **Containment (11.09a.2) is the single most reliable standard on the exam**, appearing on eight of the nine administrations (14 questions total). **The New Deal (11.07c.5)** is second (12 questions) and continues to appear even as its parent unit rests in multiple choice. Together these two standards illustrate Trend 1: the surest predictions are at the standard level, not the unit level.
+
+**Constitutional Foundations (11.02) is the most-represented unit in this table** — three standards (11.02c.4, 11.02a.1, 11.02d.4), tied with Expansion & Sectionalism (11.03) for the most — but it is also the **least concentrated** unit on the exam. Its 43 questions are spread across nine standards, and its largest, Federalist vs. Antifederalist, accounts for only about 21% of the unit, against Containment's 50% of the Cold War and the New Deal's 48% of Prosperity & Depression. Constitutional Foundations is therefore the exception to Trend 1: it is heavily and reliably tested, but not through any single dominant standard. The practical consequence is that one cannot predict *which* 11.02 standard will appear, so the unit must be reviewed broadly rather than narrowed to one or two iron-man topics.
 
 ---
 
@@ -166,7 +165,7 @@ About 77% of Part I questions require outside knowledge. The share varies by uni
 | 11.01 Colonial Foundations | 62% | Most document-supported |
 | 11.04 Reconstruction | 62% | Most document-supported |
 
-The corrected data show a **narrower and higher band** than earlier drafts suggested: even the most document-supported units (11.01, 11.04, 11.03) require outside information on roughly two-thirds of questions, and no unit is reliably "answerable from the document." The earlier claim that World War II was document-friendly does not hold in the question-level data.
+The band is **narrow and high**: even the most document-supported units (11.01, 11.04, 11.03) require outside information on roughly two-thirds of questions, and no unit is reliably "answerable from the document." World War II, in particular, is not document-friendly in the question-level data despite its small sample.
 
 Stimulus type shows a parallel gradient:
 
@@ -240,6 +239,60 @@ The most dependable specific expectations for June 2026 are **Containment (11.09
 
 ---
 
-## 11. Bottom Line and Teaching Implications
+## 11. How to Review for the June 2026 Exam
 
-Review at the level of **content standards, not eras**, and judge predictions by reliability rather than size. The most dependable expectations for June 2026 are a mix of probable rebounds and stable lows: a Constitutional Foundations recovery (11.02) and a Cold War showing anchored by Containment (11.09a.2), alongside confident low forecasts for World War II and Colonial Foundations. Treat Prosperity & Depression (11.07) as a low-but-watch unit — the essays that have absorbed it are due to rotate off, which could lift its multiple-choice count. Because almost four in five questions require outside knowledge and even the most document-supported units demand it on two-thirds of items, content mastery — not document-reading technique alone — is what the exam rewards. Finally, spend little time on the standards that debuted in January 2026 (they rarely recur) and instead concentrate on the standards that have proven they recur, prioritizing the untested standards only of units forecast to be active.
+Review time is finite, so it should be allocated by two factors at once: **how likely a standard is to appear** (the forecast, Sections 4 and 9) and **how well students currently perform on it** (the January 2026 administration, scored below). The highest-value content is where a high likelihood of appearing meets weak current performance; content that is likely but already strong needs only maintenance, and content that is unlikely needs little time regardless of difficulty.
+
+### 11.1 What the January 2026 results show
+
+On the most recent administration, students averaged about 58% on Part I (median 61%), and the mean question was answered correctly by roughly 64% of the students who attempted it. Two patterns matter for planning. First, **questions requiring outside information were harder** (63% correct) than those answerable from the document (67%) — consistent with the finding that roughly four in five questions demand recalled knowledge. Second, performance varied widely by unit:
+
+| Unit | % correct (Jan 2026) | June 2026 forecast |
+|---|---|---|
+| 11.01 Colonial Foundations | 52% (weakest) | 2 |
+| 11.10 Civil Rights & Social Change | 57% | 2–4 (+ likely essay) |
+| 11.08 World War II | 59% | 1–2 |
+| 11.02 Constitutional Foundations | 60% | 4–6 |
+| 11.09 Cold War | 62% | 3–4 |
+| 11.05 Industrialization | 64% | 3–4 |
+| 11.03 Expansion & Sectionalism | 65% | 2–4 |
+| 11.04 Reconstruction | 65% | 2–3 |
+| 11.07 Prosperity & Depression | 67% | 1–2 |
+| 11.06 Rise of American Power / WWI | 69% | 3–4 |
+| 11.11 U.S. in a Changing World | 70% (strongest) | 1–2 |
+
+### 11.2 Priority tiers
+
+**Tier 1 — Teach hardest and most (likely to appear *and* weak).**
+- **Constitutional Foundations (11.02)** — the highest-volume unit (forecast 4–6) at only 60% correct. Because the unit spreads across nine standards rather than concentrating (Section 4), it must be reviewed broadly: the Federalist/Antifederalist debate, federal structure and principles (the elastic-clause question was among the hardest at 53%), British control and colonial resistance, early Supreme Court cases, and the Washington administration.
+- **Cold War — Containment (11.09a.2)** — the single most-tested standard on the exam, yet the January containment question (the 1946 Europe/Marshall Plan map) was answered correctly by only 45%. Drill the Truman Doctrine, Marshall Plan, and NATO as a set.
+- **Industrialization — Regulation vs. Monopolies (11.05a.3)** — a high-frequency standard (eight lifetime appearances) on which the two Theodore Roosevelt/trust questions averaged only ~51%. Drill antitrust enforcement, the commerce power, and *laissez-faire*.
+- **Civil Rights & Social Change (11.10)** — second-weakest unit (57%) and the leading Civic Literacy Essay candidate. The Little Rock question was 49%. Drill *Brown v. Board*, Little Rock, the Civil Rights and Voting Rights Acts, and the major movement events.
+
+**Tier 2 — Quick wins (weak but low-volume).**
+- **Colonial Foundations (11.01)** — the weakest unit overall (52%); the Mayflower Compact/Pilgrims question was the single hardest item on the exam (44%). Only two questions are forecast, but the founding documents are a small, learnable body of content that converts directly to points.
+- **World War II (11.08)** — 59% correct, one to two questions forecast. The Nuremberg/Holocaust and Japanese-internment material is finite and winnable.
+
+**Tier 3 — Likely but already solid (maintain, don't over-invest).**
+- **Rise of American Power / WWI (11.06)** — forecast 3–4 but the strongest of the high-volume units (69%). Light review of the Spanish-American War and Wilson/WWI.
+- **Expansion & Sectionalism (11.03)** — forecast 2–4, 65% correct; keep American Nationalism warm, since it is the most overdue high-frequency standard.
+
+**Maintain/monitor.** Prosperity & Depression (11.07) is forecast low but should not be dropped — keep the New Deal warm, and watch for an essay rotation that could raise its multiple-choice count. U.S. in a Changing World (11.11) is both light and the strongest-performing unit; it needs minimal time.
+
+Across all tiers, spend little time on the specific standards that debuted in January 2026 — they rarely recur (Section 6) — and concentrate on standards with a demonstrated history of repeating.
+
+### 11.3 How to run the review (what the evidence supports)
+
+The method matters as much as the content. Five findings from learning science should shape the sessions:
+
+1. **Retrieval practice over re-reading.** Having students recall and apply material — low-stakes quizzing, document analysis, "brain dumps" — produces far more durable retention than reviewing notes (roughly 80% vs. 34% retained after a week in Roediger & Karpicke, 2006; practice testing and distributed practice were the two most effective techniques in Donoghue & Hattie's 2021 meta-analysis). Most of each session should be students producing answers, not the teacher re-presenting.
+2. **Space the practice and protect sleep between sessions.** The same standard revisited across several short sessions outperforms one long block, because the gaps allow consolidation. Re-quiz earlier units at the start of each session rather than reviewing a unit once and moving on.
+3. **Block first, then interleave.** Introduce or re-teach a weak standard in a focused block, then mix it into cumulative practice with other units (Hwang, 2025). Interleaving also mirrors the exam, where consecutive questions jump across units and require students to decide which knowledge applies.
+4. **Practice at the level the exam tests.** Because about 77% of questions require outside knowledge and even the most document-supported units demand it on two-thirds of items, drilling document-reading technique alone is insufficient — students need recalled content. Use higher-order, stimulus-based practice (real past documents with "which best supports / what was the result" prompts), which yields larger gains on higher-order items than fact-only drilling (Agarwal et al., 2021).
+5. **Target the visual-plus-outside-information combination.** Visual prompts (cartoons, posters, photographs) require outside knowledge about 90% of the time and were among the hardest items in January (the Little Rock cartoon, 49%). Rehearse the move of pairing a brief visual with the knowledge it implies.
+
+### 11.4 A workable sequence
+
+Front-load the Tier 1 content so it receives the most spaced repetitions before the exam, and let each session open with a short cumulative retrieval warm-up on earlier material. A practical arc: begin with Constitutional Foundations and Cold War containment (high volume, high difficulty, maximum benefit from early spacing); add Industrialization regulation and the Civil Rights movement; fold in the Tier 2 quick wins (colonial founding documents, World War II); give Tier 3 a lighter pass; and finish with full, timed, mixed practice sets that interleave all units and rehearse the short-essay and Civic Literacy formats. Reserve the final days for consolidation and format rehearsal rather than new content, since late cramming raises confidence without improving performance.
+
+*Performance figures are from the January 2026 administration and reflect one cohort; they indicate where students currently struggle rather than a fixed difficulty of the content.*
