@@ -38,7 +38,6 @@ LAYOUT = dict(
     font=dict(family='system-ui, sans-serif', size=12, color=C['navy']),
     hoverlabel=dict(bgcolor='white', font_size=12, font_family='system-ui, sans-serif'),
     margin=dict(l=20, r=20, t=50, b=20),
-    autosize=True,
 )
 
 LEGEND_ITEMS = [
