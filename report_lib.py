@@ -1063,6 +1063,7 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
     }}
     section p.subtitle {{ color: #777; font-size: 0.85rem; margin: 6px 0 16px; font-style: italic; }}
     .plotly-graph-div {{ width: 100% !important; }}
+    .chart-grid .plotly-graph-div {{ height: 320px !important; }}
     .chart-grid {{
       display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;
     }}
