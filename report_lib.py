@@ -508,7 +508,7 @@ def distractor_html(df, q, nq):
 <div id="{txt_id}" style="font-size:13px;color:{C['navy']};
      padding:10px 4px 4px;min-height:20px;line-height:1.5">{q_text_map[1]}</div>
 {chart_div}
-<div class="q-btns">{btn_items}</div>
+<div class="q-btns" style="display:grid;grid-template-columns:repeat(14,auto);justify-content:center">{btn_items}</div>
 <script>
 (function(){{
   var texts={texts_js};
@@ -883,7 +883,7 @@ def fig_crq_bar(df, crq_q, crq_col_names):
         labels  = [c.replace('CRQ_', '') for c in crq_col_names]
         q_texts = [''] * len(crq_col_names)
 
-    y_labels = [f'Q{lbl}' for lbl in labels]
+    y_labels = [str(lbl) for lbl in labels]
     total    = len(df)
     pct_1, pct_0, pct_blank = [], [], []
     hov_1,  hov_0,  hov_bl  = [], [], []
@@ -921,9 +921,11 @@ def fig_crq_bar(df, crq_q, crq_col_names):
         barmode='stack',
         xaxis=dict(tickformat='.0%', title='% of Students', range=[0, 1.0],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
-        yaxis=dict(autorange='reversed', showgrid=False, tickfont=dict(size=13)),
+        yaxis=dict(autorange='reversed', showgrid=False, tickfont=dict(size=13),
+                   ticksuffix='  '),
         legend=dict(orientation='h', y=-0.18, x=0.5, xanchor='center'),
     )
+    fig.update_layout(margin=dict(l=60, r=20, t=50, b=20))
     return fig
 
 
