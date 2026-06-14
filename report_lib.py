@@ -896,9 +896,9 @@ def fig_crq_bar(df, crq_q, crq_col_names):
         pct_0.append(n_0 / total)
         pct_blank.append(n_blank / total)
         short_q = qtxt[:70] + ('…' if len(qtxt) > 70 else '')
-        hov_1.append(f'<b>Q{lbl}</b>: {short_q}<br>Scored 1: {n_1} students ({n_1/total:.0%})')
-        hov_0.append(f'<b>Q{lbl}</b>: {short_q}<br>Scored 0: {n_0} students ({n_0/total:.0%})')
-        hov_bl.append(f'<b>Q{lbl}</b>: {short_q}<br>Left blank: {n_blank} students ({n_blank/total:.0%})')
+        hov_1.append(f'<b>{lbl}</b>: {short_q}<br>Scored 1: {n_1} students ({n_1/total:.0%})')
+        hov_0.append(f'<b>{lbl}</b>: {short_q}<br>Scored 0: {n_0} students ({n_0/total:.0%})')
+        hov_bl.append(f'<b>{lbl}</b>: {short_q}<br>Left blank: {n_blank} students ({n_blank/total:.0%})')
 
     def _seg(x_vals, name, color, hover):
         return go.Bar(
