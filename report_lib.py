@@ -91,8 +91,21 @@ def load_data(file):
     questions  = pd.read_excel(file, sheet_name='Questions')
     std_sheet  = pd.read_excel(file, sheet_name='Content Standards')
 
-    # NQ = number of MC questions, detected from integer-named answer columns in Scores
-    mc_cols_raw = [c for c in scores_raw.columns if str(c).strip().isdigit()]
+    # Identify CRQ (Part II) question IDs so they are excluded from MC detection
+    crq_ids = set()
+    if 'Part' in questions.columns:
+        part_ii  = questions[questions['Part'].astype(str).str.strip() == 'Part II']
+        q_id_col = '#' if '#' in questions.columns else ('CMA #' if 'CMA #' in questions.columns else None)
+        if q_id_col:
+            crq_ids = set(part_ii[q_id_col].astype(str).str.strip().tolist())
+
+    # CRQ columns in Scores — matched by Q# string (handles '34a', '34b', etc.)
+    crq_cols_raw  = [c for c in scores_raw.columns if str(c).strip() in crq_ids]
+    crq_col_names = [f'CRQ_{str(c).strip()}' for c in crq_cols_raw]
+
+    # MC columns: integer-named Scores columns NOT in the CRQ set
+    mc_cols_raw = [c for c in scores_raw.columns
+                   if str(c).strip().isdigit() and str(c).strip() not in crq_ids]
     NQ = len(mc_cols_raw)
 
     cols = std_sheet.columns.tolist()
@@ -118,19 +131,28 @@ def load_data(file):
         'CMA #':         'Q_Num',    # CMA sheets
         '#':             'Q_Num',    # Final exam sheets
         'Source #':      'Source_Num',
-        'Full Answer':   'Full_Answer',
         'Stimulus Type': 'Stimulus_Type',
         'Source Type':   'Source_Type',
         'Task Model':    'Task_Model',
         'Content':       'Content_Std',
         'Need OI?':      'Need_OI',
-        'Point Biserial':'Point_Biserial',
         'Option 1': 'Opt1', 'Option 2': 'Opt2',
         'Option 3': 'Opt3', 'Option 4': 'Opt4',
     })
     q['Q_Num'] = pd.to_numeric(q['Q_Num'], errors='coerce')
+    # Only keep MC questions (NQ filter naturally excludes CRQ rows)
     q = q[q['Q_Num'].isin(range(1, NQ + 1))].sort_values('Q_Num').reset_index(drop=True)
     q['Q_Num'] = q['Q_Num'].astype(int)
+
+    # Derive Full_Answer from answer number + option columns (drops need for that Excel column)
+    if 'Full Answer' in q.columns:
+        q = q.drop(columns=['Full Answer'])
+    def _full_ans(r):
+        try:
+            return str(r[f'Opt{int(r["Answer"])}'])
+        except Exception:
+            return ''
+    q['Full_Answer'] = q.apply(_full_ans, axis=1)
 
     answer_key = {}
     for _, row in q.iterrows():
@@ -145,9 +167,11 @@ def load_data(file):
     }
     for raw_col, i in zip(mc_cols_raw, range(1, NQ + 1)):
         rename[raw_col] = f'Q{i}_ans'
+    for raw_col in crq_cols_raw:
+        rename[raw_col] = f'CRQ_{str(raw_col).strip()}'
 
     df = scores_raw.rename(columns=rename).dropna(subset=['Class']).copy()
-    # Drop rows where every answer choice is blank
+    # Drop rows where every MC answer is blank
     df = df.dropna(subset=answer_cols, how='all')
     for i in range(1, NQ + 1):
         student_ans = pd.to_numeric(df[f'Q{i}_ans'], errors='coerce')
@@ -158,7 +182,31 @@ def load_data(file):
     df['Is_ELL']   = df['ELL'].notna()
     df['Is_IEP']   = df['IEP'].notna()
 
-    return df, q, std_lookup, std_name, answer_cols, correct_cols, NQ
+    # CRQ scoring — blank cells stay NaN; CRQ_Score treats blanks as 0
+    for col in crq_col_names:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    if crq_col_names:
+        df['CRQ_Score'] = df[crq_col_names].fillna(0).sum(axis=1)
+        df['CRQ_Blank'] = df[crq_col_names].isna().sum(axis=1)
+
+    # CRQ question metadata
+    crq_q = pd.DataFrame()
+    if crq_ids and 'Part' in questions.columns:
+        part_ii_mask = questions['Part'].astype(str).str.strip() == 'Part II'
+        crq_q = questions[part_ii_mask].copy()
+        col_map = {q_id_col: 'Q_Label'} if q_id_col else {}
+        if 'Content' in crq_q.columns:
+            col_map['Content'] = 'Content_Std'
+        crq_q = crq_q.rename(columns=col_map)
+        if 'Q_Label' in crq_q.columns:
+            crq_q['Q_Label'] = crq_q['Q_Label'].astype(str).str.strip()
+        if 'Question' not in crq_q.columns:
+            crq_q['Question'] = ''
+        if 'Content_Std' not in crq_q.columns:
+            crq_q['Content_Std'] = ''
+        crq_q = crq_q.reset_index(drop=True)
+
+    return df, q, crq_q, crq_col_names, std_lookup, std_name, answer_cols, correct_cols, NQ
 
 
 # ── Figure builders ───────────────────────────────────────────────────────────
@@ -822,6 +870,122 @@ def fig_stimulus_type(df, q, nq):
     return fig
 
 
+# ── CRQ (Part II) builders ────────────────────────────────────────────────────
+def fig_crq_bar(df, crq_q, crq_col_names):
+    """Stacked horizontal bar: per-CRQ-question breakdown of Scored 1 / Scored 0 / Blank."""
+    if not crq_col_names:
+        return None
+
+    if not crq_q.empty and 'Q_Label' in crq_q.columns:
+        labels  = crq_q['Q_Label'].tolist()
+        q_texts = crq_q['Question'].astype(str).str.strip().tolist()
+    else:
+        labels  = [c.replace('CRQ_', '') for c in crq_col_names]
+        q_texts = [''] * len(crq_col_names)
+
+    y_labels = [f'Q{lbl}' for lbl in labels]
+    total    = len(df)
+    pct_1, pct_0, pct_blank = [], [], []
+    hov_1,  hov_0,  hov_bl  = [], [], []
+
+    for col, lbl, qtxt in zip(crq_col_names, labels, q_texts):
+        n_1     = int((df[col] == 1).sum())
+        n_0     = int((df[col] == 0).sum())
+        n_blank = int(df[col].isna().sum())
+        pct_1.append(n_1 / total)
+        pct_0.append(n_0 / total)
+        pct_blank.append(n_blank / total)
+        short_q = qtxt[:70] + ('…' if len(qtxt) > 70 else '')
+        hov_1.append(f'<b>Q{lbl}</b>: {short_q}<br>Scored 1: {n_1} students ({n_1/total:.0%})')
+        hov_0.append(f'<b>Q{lbl}</b>: {short_q}<br>Scored 0: {n_0} students ({n_0/total:.0%})')
+        hov_bl.append(f'<b>Q{lbl}</b>: {short_q}<br>Left blank: {n_blank} students ({n_blank/total:.0%})')
+
+    def _seg(x_vals, name, color, hover):
+        return go.Bar(
+            y=y_labels, x=x_vals, name=name, orientation='h',
+            marker_color=color, marker_line_color='white', marker_line_width=1,
+            text=[f'{p:.0%}' if p >= 0.07 else '' for p in x_vals],
+            textposition='inside', insidetextanchor='middle',
+            textfont=dict(color='white', size=11),
+            hovertext=hover, hoverinfo='text',
+        )
+
+    fig = go.Figure([
+        _seg(pct_1,     'Scored 1',   C['teal'],  hov_1),
+        _seg(pct_0,     'Scored 0',   C['red'],   hov_0),
+        _seg(pct_blank, 'Left Blank', C['lgray'], hov_bl),
+    ])
+    fig.update_layout(**LAYOUT,
+        title='Constructed Response Results — Per Question',
+        height=max(300, 60 + 65 * len(crq_col_names)),
+        barmode='stack',
+        xaxis=dict(tickformat='.0%', title='% of Students', range=[0, 1.0],
+                   showgrid=True, gridcolor='#EEEEEE', zeroline=False),
+        yaxis=dict(autorange='reversed', showgrid=False, tickfont=dict(size=13)),
+        legend=dict(orientation='h', y=-0.18, x=0.5, xanchor='center'),
+    )
+    return fig
+
+
+def fig_crq_class_bar(df, crq_col_names):
+    """Average CRQ total score per class & period."""
+    if not crq_col_names:
+        return None
+    n_crq = len(crq_col_names)
+    cp = df.groupby(['Class', 'Period'])['CRQ_Score'].agg(['mean', 'count']).reset_index()
+    classes = sorted(df['Class'].unique())
+    bar_width, group_gap = 0.22, 0.15
+    fig = go.Figure()
+    current_x = 0.0
+    class_centers = {}
+    for cls in classes:
+        cls_data = cp[cp['Class'] == cls].sort_values('Period')
+        n_bars   = len(cls_data)
+        for pi, (_, row) in enumerate(cls_data.iterrows()):
+            x_pos = current_x + pi * bar_width
+            fig.add_trace(go.Bar(
+                x=[x_pos], y=[row['mean']],
+                marker_color=CLASS_COLORS.get(cls, C['blue']),
+                marker_line_color='white', marker_line_width=1,
+                text=[f"P{int(row['Period'])}"],
+                textposition='inside', insidetextanchor='end',
+                textfont=dict(color='white', size=11),
+                hovertemplate=f'Avg {row["mean"]:.1f}/{n_crq}  (n={int(row["count"])})<extra></extra>',
+                showlegend=False, width=bar_width * 0.85,
+            ))
+        class_centers[cls] = current_x + (n_bars - 1) * bar_width / 2
+        current_x += n_bars * bar_width + group_gap
+    fig.update_xaxes(tickvals=list(class_centers.values()), ticktext=list(class_centers.keys()),
+                     showgrid=False, zeroline=False,
+                     range=[-0.25, current_x - group_gap + 0.25])
+    fig.update_yaxes(title_text=f'Avg CRQ Score (out of {n_crq})', range=[0, n_crq * 1.28],
+                     showgrid=True, gridcolor='#EEEEEE', zeroline=False)
+    fig.update_layout(**LAYOUT, title='Avg CRQ Score by Class & Period', height=300)
+    return fig
+
+
+def crq_kpi_html(df, crq_col_names):
+    if not crq_col_names:
+        return ''
+    n_crq    = len(crq_col_names)
+    avg      = df['CRQ_Score'].mean()
+    pct_full = (df['CRQ_Score'] >= n_crq).mean()
+    pct_any_blank = (df['CRQ_Blank'] > 0).mean()
+
+    def card(value, label, color):
+        return (f'<div style="background:{color};border-radius:10px;padding:22px 18px;'
+                f'text-align:center;color:white;flex:1;min-width:160px">'
+                f'<div style="font-size:2rem;font-weight:700;line-height:1.1">{value}</div>'
+                f'<div style="font-size:0.85rem;opacity:0.92;margin-top:6px">{label}</div></div>')
+
+    avg_color = C['teal'] if avg / n_crq >= 0.70 else (C['orange'] if avg / n_crq >= 0.50 else C['red'])
+    return (f'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:18px;margin-bottom:8px">'
+            + card(f'{avg:.1f} / {n_crq}', 'Avg CRQ Score', avg_color)
+            + card(f'{pct_full:.0%}', 'Got Full Credit', C['teal'] if pct_full >= 0.30 else C['orange'])
+            + card(f'{pct_any_blank:.0%}', 'Left ≥1 CRQ Blank', C['orange'] if pct_any_blank > 0.10 else C['teal'])
+            + '</div>')
+
+
 # ── HTML helpers ──────────────────────────────────────────────────────────────
 def kpi_html(df, nq):
     mean_s  = df['MC_Score'].mean()
@@ -945,7 +1109,7 @@ def takeaways_html(df, q, std_name, nq):
 
 
 # ── Report assembly ───────────────────────────────────────────────────────────
-def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
+def build_html(df, q, crq_q, crq_col_names, std_name, nq, title, home_link='../../index.html'):
     today = date.today().strftime('%B %d, %Y')
 
     figs = {
@@ -961,6 +1125,8 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
         'stimulus_type': fig_stimulus_type(df, q, nq),
     }
 
+    has_crq   = bool(crq_col_names)
+    crq_link  = [('crq', 'Part II CRQs')] if has_crq else []
     nav_links = f'<a href="{home_link}">← Home</a>' + ''.join(
         f'<a href="#{a}">{t}</a>'
         for a, t in [
@@ -968,6 +1134,7 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
             ('class-period', 'Class & Period'),
             ('difficulty',   'Difficulty'),
             ('distractor',   'Distractors'),
+        ] + crq_link + [
             ('groups',       'Groups'),
             ('takeaways',    'Takeaways'),
             ('appendix',     'Appendix'),
@@ -1002,6 +1169,13 @@ def build_html(df, q, std_name, nq, title, home_link='../../index.html'):
 
         section('4.  What Did Students Select?', 'distractor',
             distractor_html(df, q, nq)),
+
+        (section('5.  Part II — Constructed Responses', 'crq',
+            crq_kpi_html(df, crq_col_names)
+            + to_div(fig_crq_bar(df, crq_q, crq_col_names))
+            + (to_div(fig_crq_class_bar(df, crq_col_names)) if df['Class'].nunique() > 1 else ''),
+            subtitle='Each question scored 0 or 1; blanks count as 0 toward class average.')
+         if has_crq else ''),
 
         section('6.  Student Group Comparison', 'groups',
             to_div(figs['grp']) + subgroup_notes_html(df)),
@@ -1131,11 +1305,12 @@ def run(config):
     home_link = config.get('home_link', '../../index.html')
 
     print('Loading data...')
-    df, q, std_lookup, std_name, answer_cols, correct_cols, NQ = load_data(file)
-    print(f'  {len(df)} students, {df["Class"].nunique()} classes, {NQ} questions')
+    df, q, crq_q, crq_col_names, std_lookup, std_name, answer_cols, correct_cols, NQ = load_data(file)
+    n_crq = len(crq_col_names)
+    print(f'  {len(df)} students, {df["Class"].nunique()} classes, {NQ} MC + {n_crq} CRQ questions')
 
     print('Building report...')
-    html = build_html(df, q, std_name, NQ, title, home_link)
+    html = build_html(df, q, crq_q, crq_col_names, std_name, NQ, title, home_link)
 
     with open(output, 'w', encoding='utf-8') as f:
         f.write(html)
