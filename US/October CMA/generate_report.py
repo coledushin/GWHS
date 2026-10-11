@@ -9,6 +9,6 @@ lib.run({
     'class_colors': {
         'Bermejo':        lib.C['blue'],
         'Dushin':         lib.C['orange'],
-        'Klein / Cooper': lib.C['green'],
+        'Klein / Cooper': lib.C['purple'],
     },
 })
