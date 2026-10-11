@@ -26,17 +26,20 @@ from scipy.ndimage import gaussian_filter1d
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 C = dict(
-    red='#E84855', orange='#F4A261', teal='#44BBA4', green='#06D6A0',
-    blue='#3A86FF', navy='#2D3142', gray='#888888', lgray='#D8D8D8',
+    red='#DC4A5A', orange='#F2A541', teal='#35AE97', green='#1E8A6E',
+    blue='#3D6FE8', purple='#8B5CF6', navy='#1F2A44', gray='#8A8F98', lgray='#D9DCE1',
 )
+GRID = '#EEF0F3'
+FONT = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"
 
 # Default class colors — overridden by config['class_colors'] in run()
 CLASS_COLORS = {'Bermejo': C['blue'], 'Sourial': C['blue'], 'Dushin': C['orange'], 'Kovelsky': C['teal'], 'Antaky': C['red']}
 
 LAYOUT = dict(
     plot_bgcolor='white', paper_bgcolor='white',
-    font=dict(family='system-ui, sans-serif', size=12, color=C['navy']),
-    hoverlabel=dict(bgcolor='white', font_size=12, font_family='system-ui, sans-serif'),
+    font=dict(family=FONT, size=12, color=C['navy']),
+    hoverlabel=dict(bgcolor='white', bordercolor=C['lgray'], font_size=12, font_family=FONT,
+                    font_color=C['navy']),
     margin=dict(l=20, r=20, t=50, b=20),
 )
 
@@ -75,14 +78,27 @@ def add_color_legend(fig):
             name=label, showlegend=True))
 
 
+def _style(fig):
+    """Shared chart polish: left-aligned titles, soft gridlines, muted axis text."""
+    fig.update_layout(title=dict(x=0, xref='container', xanchor='left', pad=dict(l=4),
+                                 font=dict(size=15, color=C['navy'], family=FONT)))
+    fig.update_xaxes(gridcolor=GRID, linecolor=C['lgray'], tickfont_color='#5B6475',
+                     title_font=dict(size=12, color='#5B6475'))
+    fig.update_yaxes(gridcolor=GRID, linecolor=C['lgray'], tickfont_color='#5B6475',
+                     title_font=dict(size=12, color='#5B6475'))
+    return fig
+
+
 def to_div(fig):
-    return fig.to_html(full_html=False, include_plotlyjs=False,
-                       config={'displayModeBar': False, 'responsive': True})
+    return _style(fig).to_html(full_html=False, include_plotlyjs=False,
+                               config={'displayModeBar': False, 'responsive': True})
 
 
-def section(title, anchor, content_html, subtitle=''):
-    sub = f'<p class="subtitle">{subtitle}</p>' if subtitle else ''
-    return f'<section id="{anchor}"><h2>{title}</h2>{sub}{content_html}</section>'
+def section(title, anchor, content_html, subtitle='', num=None):
+    badge = f'<span class="sec-num">{num}</span>' if num is not None else ''
+    sub   = f'<p class="subtitle">{subtitle}</p>' if subtitle else ''
+    return (f'<section id="{anchor}"><div class="sec-head">{badge}'
+            f'<div><h2>{title}</h2>{sub}</div></div>{content_html}</section>')
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
@@ -287,7 +303,7 @@ def fig_histogram(df, nq):
     for label, color, lo, hi in bands:
         fig.add_vrect(x0=lo, x1=hi, fillcolor=color, opacity=0.06, line_width=0,
                       annotation_text=label, annotation_position='top left',
-                      annotation_font=dict(size=9, color=color))
+                      annotation_font=dict(size=11, color=color))
     fig.update_layout(**LAYOUT,
         title='How Did Students Score?', height=350,
         xaxis=dict(title=f'Questions Correct (out of {nq})',
@@ -448,27 +464,28 @@ def difficulty_html(df, q, std_name, nq, show_classes=True):
     show_text = nq <= 20
     fig = go.Figure(go.Heatmap(
         z=z_data, x=col_labels, y=y_labels,
-        colorscale=[[0, C['red']], [0.5, C['orange']], [1.0, C['teal']]],
-        zmin=zmin_val, zmax=zmax_val, xgap=3, ygap=3,
+        colorscale=[[0, '#E5707C'], [0.5, '#FBEBD3'], [1.0, '#4CBBA5']],
+        zmin=zmin_val, zmax=zmax_val, xgap=4, ygap=4,
         text=text_data, texttemplate='%{text}' if show_text else '',
-        textfont=dict(size=11, color='white'),
+        textfont=dict(size=12, color=C['navy']),
         hoverinfo='text', hovertext=hover_data, showscale=True,
-        colorbar=dict(title='% Correct', tickformat='.0%',
+        colorbar=dict(title=dict(text='% Correct', font=dict(size=11)), tickformat='.0%',
+                      thickness=12, outlinewidth=0,
                       tickvals=[zmin_val, (zmin_val + zmax_val) / 2, zmax_val],
                       ticktext=[f'{zmin_val:.0%}', f'{(zmin_val+zmax_val)/2:.0%}', f'{zmax_val:.0%}']),
     ))
     fig.update_layout(**LAYOUT,
         title='', height=max(240, 80 + 70 * len(row_names)),
-        xaxis=dict(side='top', title='', tickfont=dict(size=11), showgrid=False, ticklen=8),
-        yaxis=dict(autorange='reversed', tickfont=dict(size=12), showgrid=False, ticklen=8),
+        xaxis=dict(side='top', title='Question', tickfont=dict(size=12), showgrid=False, ticklen=0),
+        yaxis=dict(autorange='reversed', tickfont=dict(size=12), showgrid=False, ticklen=0,
+                   ticksuffix='  '),
     )
     if show_classes:
         fig.add_shape(type='line', xref='paper', yref='y', x0=0, x1=1, y0=0.5, y1=0.5,
-                      line=dict(color='white', width=10), layer='above')
+                      line=dict(color='white', width=12), layer='above')
     fig.update_layout(margin=dict(l=95 if show_classes else 20, r=20, t=70, b=20))
 
-    chart_div = fig.to_html(full_html=False, include_plotlyjs=False,
-                            config={'displayModeBar': False, 'responsive': True})
+    chart_div = to_div(fig)
     m = _re.search(r'<div id="([^"]+)"', chart_div)
     fig_id = m.group(1) if m else 'plotly-diff'
     bid    = fig_id[-8:]
@@ -477,7 +494,8 @@ def difficulty_html(df, q, std_name, nq, show_classes=True):
     nat_js  = json.dumps({'x': [col_nat],    'z': [z_nat],   'text': [txt_nat],    'hovertext': [hov_nat]})
 
     btn_html = (
-        f'<div class="q-btns" style="margin-top:10px">'
+        f'<div class="q-btns">'
+        f'<span class="btn-label">Sort</span>'
         f'<button class="q-btn q-btn-active" id="diff-hard-{bid}">Hardest → Easiest</button>'
         f'<button class="q-btn" id="diff-nat-{bid}">Question Order</button>'
         f'</div>'
@@ -525,8 +543,8 @@ def distractor_html(df, q, nq):
         pcts     = [counts[j] / total if total > 0 else 0 for j in range(1, 5)]
         fig.add_trace(go.Bar(
             x=[1, 2, 3, 4], y=pcts,
-            marker_color=[C['teal'] if j == ca else C['lgray'] for j in range(1, 5)],
-            marker_line_color='white', marker_line_width=1.2,
+            marker_color=[C['teal'] if j == ca else '#C9CED6' for j in range(1, 5)],
+            marker_line_width=0,
             text=[f'{p:.0%}' for p in pcts], textposition='outside',
             hovertext=[
                 f'<b>{opts[j-1]}</b><br>'
@@ -534,20 +552,22 @@ def distractor_html(df, q, nq):
                 for j in range(1, 5)
             ],
             hoverinfo='text', visible=(q_num == 1), showlegend=False, cliponaxis=False,
+            textfont=dict(size=13, color=C['navy']), width=0.6,
         ))
 
-    fig.update_layout(**LAYOUT, height=340,
-        xaxis=dict(tickvals=[1, 2, 3, 4], title='', showgrid=False, zeroline=False),
+    fig.update_layout(**LAYOUT, height=320,
+        xaxis=dict(tickvals=[1, 2, 3, 4], ticktext=['Choice 1', 'Choice 2', 'Choice 3', 'Choice 4'],
+                   title='', showgrid=False, zeroline=False, tickfont=dict(size=13)),
         yaxis=dict(tickformat='.0%', title='% of Students', range=[0, 1.18],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
     )
     fig.update_layout(margin=dict(l=0, r=20, t=5, b=20))
 
-    chart_div = fig.to_html(full_html=False, include_plotlyjs=False,
-                            config={'displayModeBar': False, 'responsive': True})
+    chart_div = to_div(fig)
     m = _re.search(r'<div id="([^"]+)"', chart_div)
     fig_id = m.group(1) if m else 'plotly-dis'
     txt_id = f'dis-q-text-{fig_id[-8:]}'
+    lbl_id = f'dis-q-lbl-{fig_id[-8:]}'
 
     texts_js = '[' + ','.join(json.dumps(q_text_map.get(i, '')) for i in range(1, nq + 1)) + ']'
     btn_items = ''.join(
@@ -557,10 +577,12 @@ def distractor_html(df, q, nq):
     )
 
     return f'''
-<div id="{txt_id}" style="font-size:13px;color:{C['navy']};
-     padding:10px 4px 4px;min-height:20px;line-height:1.5">{q_text_map[1]}</div>
+<div class="q-btns q-btns-center"><span class="btn-label">Question</span>{btn_items}</div>
+<div class="q-card"><span class="q-card-num" id="{lbl_id}">Q1</span>
+<p id="{txt_id}">{q_text_map[1]}</p></div>
+<div class="dis-legend"><span><i style="background:{C['teal']}"></i>Correct answer</span>
+<span><i style="background:#C9CED6"></i>Incorrect choice — a tall gray bar signals a common misconception</span></div>
 {chart_div}
-<div class="q-btns" style="display:grid;grid-template-columns:repeat(14,auto);justify-content:center">{btn_items}</div>
 <script>
 (function(){{
   var texts={texts_js};
@@ -575,6 +597,7 @@ def distractor_html(df, q, nq):
         var vis=Array(nq).fill(false); vis[qi]=true;
         Plotly.restyle(el,{{visible:vis}});
         td.textContent=texts[qi]||'';
+        document.getElementById('{lbl_id}').textContent='Q'+(qi+1);
         document.querySelectorAll('.q-btn[data-fig="{fig_id}"]').forEach(function(b){{
           b.classList.toggle('q-btn-active', b===btn);
         }});
@@ -734,8 +757,7 @@ def scatter_html(df, q, std_name, nq, show_classes=True):
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
     )
 
-    chart_div = fig.to_html(full_html=False, include_plotlyjs=False,
-                            config={'displayModeBar': False, 'responsive': True})
+    chart_div = to_div(fig)
     m = _re.search(r'<div id="([^"]+)"', chart_div)
     fig_id = m.group(1) if m else 'plotly-scatter'
     ctr_id = 'sc-' + fig_id[-8:]
@@ -778,7 +800,7 @@ def scatter_html(df, q, std_name, nq, show_classes=True):
 </script>'''
 
     if len(views) > 1:
-        return f'<div class="q-btns" style="margin-bottom:4px">{btns}</div>\n{chart_div}{script}'
+        return f'<div class="q-btns"><span class="btn-label">View</span>{btns}</div>\n{chart_div}{script}'
     return chart_div
 
 
@@ -1033,26 +1055,35 @@ def fig_crq_class_bar(df, crq_col_names):
     return fig
 
 
+def _kpi(value, label, color, hint=''):
+    hint_html = f'<div class="kpi-hint">{hint}</div>' if hint else ''
+    return (f'<div class="kpi" style="--accent:{color}">'
+            f'<div class="kpi-label">{label}</div>'
+            f'<div class="kpi-value">{value}</div>{hint_html}</div>')
+
+
 def crq_kpi_html(df, crq_col_names):
     if not crq_col_names:
         return ''
     max_total     = float(sum(df[col].max() for col in crq_col_names if df[col].notna().any()))
+    if max_total <= 0:
+        return ('<div class="callout"><div class="callout-title">No written scores yet</div>'
+                '<p class="muted" style="margin:0">Written-response columns are present but no points '
+                'have been entered.</p></div>')
     avg           = df['CRQ_Score'].mean()
     pct_70        = (df['CRQ_Score'] >= max_total * 0.70).mean()
     pct_any_blank = (df['CRQ_Blank'] > 0).mean()
 
-    def card(value, label, color):
-        return (f'<div style="background:{color};border-radius:10px;padding:22px 18px;'
-                f'text-align:center;color:white;flex:1;min-width:160px">'
-                f'<div style="font-size:2rem;font-weight:700;line-height:1.1">{value}</div>'
-                f'<div style="font-size:0.85rem;opacity:0.92;margin-top:6px">{label}</div></div>')
 
     max_str   = f'{max_total:.0f}' if max_total == int(max_total) else f'{max_total:.1f}'
     avg_color = C['teal'] if avg / max_total >= 0.70 else (C['orange'] if avg / max_total >= 0.50 else C['red'])
-    return (f'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:18px;margin-bottom:8px">'
-            + card(f'{avg:.1f} / {max_str}', 'Avg Written Score', avg_color)
-            + card(f'{pct_70:.0%}', 'Scored 70%+', C['teal'] if pct_70 >= 0.50 else C['orange'])
-            + card(f'{pct_any_blank:.0%}', 'Left ≥1 Part Blank', C['orange'] if pct_any_blank > 0.10 else C['teal'])
+    return ('<div class="kpi-row">'
+            + _kpi(f'{avg:.1f}<small> / {max_str}</small>', 'Avg written score', avg_color,
+                   f'{avg / max_total:.0%} of possible points')
+            + _kpi(f'{pct_70:.0%}', 'Scored 70%+', C['teal'] if pct_70 >= 0.50 else C['orange'],
+                   'on the written section')
+            + _kpi(f'{pct_any_blank:.0%}', 'Left ≥1 part blank',
+                   C['orange'] if pct_any_blank > 0.10 else C['teal'], 'blanks count as 0')
             + '</div>')
 
 
@@ -1064,19 +1095,15 @@ def kpi_html(df, nq):
     n       = len(df)
     n_blank = (df['MC_Blank'] > 0).sum()
 
-    def card(value, label, color):
-        return (f'<div style="background:{color};border-radius:10px;padding:22px 18px;'
-                f'text-align:center;color:white;flex:1;min-width:160px">'
-                f'<div style="font-size:2rem;font-weight:700;line-height:1.1">{value}</div>'
-                f'<div style="font-size:0.85rem;opacity:0.92;margin-top:6px">{label}</div></div>')
 
-    return (f'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:18px;margin-bottom:8px">'
-            + card(f'{mean_s:.1f} / {nq}', 'Class Average Score', score_color(round(mean_s), nq))
-            + card(f'{pct_thr:.0%}', f'Scored {thresh}+ ({thresh/nq:.0%}+)',
-                   C['teal'] if pct_thr >= 0.55 else C['orange'])
-            + card(str(n), 'Total Students', C['blue'])
-            + card(str(n_blank), 'Left a Question Blank',
-                   C['orange'] if n_blank > n * 0.10 else C['teal'])
+    return ('<div class="kpi-row">'
+            + _kpi(f'{mean_s:.1f}<small> / {nq}</small>', 'Average score', score_color(round(mean_s), nq),
+                   f'{mean_s / nq:.0%} correct on average')
+            + _kpi(f'{pct_thr:.0%}', f'Scored {thresh} or more',
+                   C['teal'] if pct_thr >= 0.55 else C['orange'], f'{thresh / nq:.0%}+ of questions correct')
+            + _kpi(str(n), 'Students tested', C['blue'], f'{df["Class"].nunique()} classes')
+            + _kpi(str(n_blank), 'Left a question blank',
+                   C['orange'] if n_blank > n * 0.10 else C['teal'], f'{n_blank / n:.0%} of students')
             + '</div>')
 
 
@@ -1091,12 +1118,13 @@ def subgroup_notes_html(df):
             gap   = avg_o - avg_g
             note  = f'{gap:+.1f} pt gap' if abs(gap) >= 0.5 else 'minimal gap'
             lines.append(
-                f'<li><b>{name}</b> (n={n_g}): avg {avg_g:.1f} vs {avg_o:.1f} for other students — {note}</li>')
+                f'<li><b>{name}</b> <span class="muted">(n={n_g})</span> — averaged {avg_g:.1f} '
+                f'vs. {avg_o:.1f} for other students <span class="pill">{note}</span></li>')
     if not lines:
-        return ''
-    return (f'<div style="margin-top:18px;background:#f5f7ff;border-radius:8px;padding:14px 18px">'
-            f'<div style="font-weight:700;color:{C["navy"]};margin-bottom:6px">Subgroup Notes</div>'
-            f'<ul style="margin:0;padding-left:18px;font-size:0.9rem">{"".join(lines)}</ul></div>')
+        return ('<div class="callout"><div class="callout-title">Subgroup notes</div>'
+                '<p class="muted" style="margin:0">No students are flagged ELL or IEP in this data.</p></div>')
+    return (f'<div class="callout"><div class="callout-title">Subgroup notes</div>'
+            f'<ul>{"".join(lines)}</ul></div>')
 
 
 def takeaways_html(df, q, std_name, nq, show_classes=True):
@@ -1121,28 +1149,26 @@ def takeaways_html(df, q, std_name, nq, show_classes=True):
 
     def panel(title, subtitle, items, color, bg):
         rows = ''.join(
-            f'<tr>'
-            f'<td style="padding:5px 8px">{lbl or ql}</td>'
-            f'<td style="font-weight:700;color:{color};padding:5px 8px;'
-            f'text-align:right;white-space:nowrap">{p:.0%}</td>'
-            f'</tr>'
+            f'<li><div class="tk-text">{lbl or ql}'
+            + (f'<span class="tk-q">{ql}</span>' if lbl else '')
+            + f'</div><div class="tk-pct" style="color:{color}">{p:.0%}</div>'
+            f'<div class="tk-bar"><i style="width:{p:.0%};background:{color}"></i></div></li>'
             for ql, p, lbl in items
-        ) or f'<tr><td colspan="2" style="color:#888;padding:8px;font-style:italic">None</td></tr>'
-        return (f'<div style="background:{bg};border:2px solid {color};border-radius:10px;'
-                f'padding:16px 18px;flex:1;min-width:220px">'
-                f'<div style="font-size:1.1rem;font-weight:700;color:{color}">{title}</div>'
-                f'<div style="font-size:0.82rem;color:#888;margin-bottom:10px;font-style:italic">{subtitle}</div>'
-                f'<table style="width:100%;border-collapse:collapse;font-size:0.9rem">{rows}</table></div>')
+        ) or '<li class="tk-empty">Nothing in this range</li>'
+        return (f'<div class="tk-panel" style="--accent:{color};--tint:{bg}">'
+                f'<div class="tk-head"><span class="tk-title">{title}</span>'
+                f'<span class="tk-count">{len(items)}</span></div>'
+                f'<div class="tk-sub">{subtitle}</div><ul>{rows}</ul></div>')
 
     def panels_html(fdf):
         items   = std_items_for(fdf)
         reteach = sorted([(ql,p,lbl) for ql,p,lbl in items if p < 0.50],     key=lambda x: x[1])
         review  = sorted([(ql,p,lbl) for ql,p,lbl in items if 0.50<=p<0.70], key=lambda x: x[1])
         strong  = sorted([(ql,p,lbl) for ql,p,lbl in items if p >= 0.70],    key=lambda x: -x[1])
-        return (f'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px">'
-                + panel('RETEACH', 'Below 50% correct', reteach, C['red'],    '#fdf0f1')
-                + panel('REVIEW',  '50–70% correct',    review,  C['orange'], '#fef8f0')
-                + panel('STRONG',  'Above 70% correct', strong,  C['teal'],   '#f0fbf8')
+        return ('<div class="tk-grid">'
+                + panel('Reteach', 'Below 50% correct', reteach, C['red'],    '#FDF1F2')
+                + panel('Review',  '50–70% correct',    review,  C['orange'], '#FEF7EC')
+                + panel('Strong',  '70% or more correct', strong, C['teal'],  '#EEF9F6')
                 + '</div>')
 
     view_divs = ''
@@ -1161,7 +1187,7 @@ def takeaways_html(df, q, std_name, nq, show_classes=True):
     if len(views) == 1:
         return panels_html(df)
 
-    return f'''<div class="q-btns" style="margin-bottom:4px">{btns}</div>
+    return f'''<div class="q-btns"><span class="btn-label">View</span>{btns}</div>
 {view_divs}
 <script>
 (function(){{
@@ -1199,34 +1225,22 @@ def build_html(df, q, crq_q, crq_col_names, std_name, nq, title,
         'stimulus_type': fig_stimulus_type(df, q, nq),
     }
 
-    has_crq  = bool(crq_col_names)
-    crq_link = [('crq', 'Part II CRQs')] if has_crq else []
-    cp_link  = [('class-period', 'Class & Period')] if show_classes else []
-    nav_links = f'<a href="{home_link}">← Home</a>' + ''.join(
-        f'<a href="#{a}">{t}</a>'
-        for a, t in [
-            ('overview',   'Overview'),
-        ] + cp_link + [
-            ('difficulty', 'Difficulty'),
-            ('distractor', 'Distractors'),
-        ] + crq_link + [
-            ('groups',     'Groups'),
-            ('takeaways',  'Takeaways'),
-            ('appendix',   'Appendix'),
-        ]
-    )
+    has_crq = bool(crq_col_names)
 
     def _opt(fig):
         return to_div(fig) if fig is not None else ''
 
-    HEADER_H = 72
-    sections = [
-        section('1.  At a Glance', 'overview',
-            kpi_html(df, nq) + to_div(figs['hist'])),
+    # (anchor, nav label, section title, subtitle, content) — numbered in order below
+    blocks = [
+        ('overview', 'Overview', 'At a Glance',
+         'Multiple-choice results for every student who took the exam. '
+         'Bars are shaded by performance band; the dotted line marks the average.',
+         kpi_html(df, nq) + to_div(figs['hist'])),
     ]
 
     if show_classes:
-        sections.append(section('2.  Class & Period Performance', 'class-period',
+        blocks.append(('class-period', 'Classes', 'Class & Period Performance',
+            'Average score for each period, and how scores spread out within each class.',
             (
                 '<div class="chart-grid">'
                 + to_div(figs['cp_bar']) + to_div(figs['cp_grade'])
@@ -1237,41 +1251,63 @@ def build_html(df, q, crq_q, crq_col_names, std_name, nq, title,
                 + to_div(figs['cp_bar']) + to_div(figs['cp_dist'])
                 + '</div>'
             )))
-        sec_num = 3
-    else:
-        sec_num = 2
 
-    sections += [
-        section(f'{sec_num}.  Which Questions Were Hardest?', 'difficulty',
-            f'<div class="scroll-x"><div style="min-width:{max(520, nq * 34)}px">'
-            + difficulty_html(df, q, std_name, nq, show_classes) + '</div></div>'),
+    blocks += [
+        ('difficulty', 'Difficulty', 'Which Questions Were Hardest?',
+         'Percent of students who answered each question correctly. '
+         'Hover a cell to see the question, its standard, and the correct answer.',
+         f'<div class="scroll-x"><div style="min-width:{max(520, nq * 34)}px">'
+         + difficulty_html(df, q, std_name, nq, show_classes) + '</div></div>'),
 
-        section(f'{sec_num + 1}.  What Did Students Select?', 'distractor',
-            distractor_html(df, q, nq)),
+        ('distractor', 'Answer Choices', 'What Did Students Select?',
+         'How students split across the four choices on each question. Pick a question number to switch.',
+         distractor_html(df, q, nq)),
+    ]
 
-        (section(f'{sec_num + 2}.  Written Response Questions', 'crq',
+    if has_crq:
+        blocks.append(('crq', 'Written', 'Written Response Questions',
+            'Short answer and essay questions; blanks count as 0 toward averages.',
             crq_kpi_html(df, crq_col_names)
             + to_div(fig_crq_bar(df, crq_q, crq_col_names))
-            + (to_div(fig_crq_class_bar(df, crq_col_names)) if show_classes and df['Class'].nunique() > 1 else ''),
-            subtitle='Short answer and essay questions; blanks count as 0 toward averages.')
-         if has_crq else ''),
+            + (to_div(fig_crq_class_bar(df, crq_col_names))
+               if show_classes and df['Class'].nunique() > 1 else '')))
 
-        section(f'{sec_num + (3 if has_crq else 2)}.  Student Group Comparison', 'groups',
-            to_div(figs['grp']) + subgroup_notes_html(df)),
+    blocks += [
+        ('groups', 'Groups', 'Student Group Comparison',
+         'Average score for general education, ELL, and IEP students, compared with the overall average.',
+         to_div(figs['grp']) + subgroup_notes_html(df)),
 
-        section(f'{sec_num + (4 if has_crq else 3)}.  Key Takeaways', 'takeaways',
-            takeaways_html(df, q, std_name, nq, show_classes)),
-
-        section('Appendix', 'appendix',
-            (_opt(figs['box']) if show_classes else '')
-            + scatter_html(df, q, std_name, nq, show_classes)
-            + '<div class="chart-grid-2">'
-            + _opt(figs['oi'])
-            + _opt(figs['stimulus_type'])
-            + _opt(figs['task_model'])
-            + _opt(figs['skill'])
-            + '</div>'),
+        ('takeaways', 'Takeaways', 'Key Takeaways',
+         'Content standards sorted by how many students answered their questions correctly, to guide reteaching.',
+         takeaways_html(df, q, std_name, nq, show_classes)),
     ]
+
+    sections = [section(t, a, c, subtitle=s, num=i + 1) for i, (a, _, t, s, c) in enumerate(blocks)]
+    sections.append(section('Appendix', 'appendix',
+        (_opt(figs['box']) if show_classes else '')
+        + '<div class="divider"></div>'
+        + scatter_html(df, q, std_name, nq, show_classes)
+        + '<p class="note">Questions above the dashed lines separate stronger and weaker students well; '
+          'points near or below 0.20 may be worth reviewing for clarity.</p>'
+        + '<div class="divider"></div>'
+        + '<div class="chart-grid-2">'
+        + _opt(figs['oi'])
+        + _opt(figs['stimulus_type'])
+        + _opt(figs['task_model'])
+        + _opt(figs['skill'])
+        + '</div>',
+        subtitle='Item statistics and results broken down by question type.', num='+'))
+
+    nav_links = ''.join(f'<a href="#{a}">{lbl}</a>' for a, lbl, *_ in blocks) \
+        + '<a href="#appendix">Appendix</a>'
+
+    n_classes = df['Class'].nunique()
+    meta = [f'{len(df)} students', f'{nq} multiple-choice questions']
+    if has_crq:
+        meta.append(f'{len(crq_col_names)} written')
+    if show_classes:
+        meta.append(f'{n_classes} class{"es" if n_classes != 1 else ""}')
+    meta_html = ''.join(f'<span>{m}</span>' for m in meta)
 
     body = '\n'.join(sections)
 
@@ -1281,85 +1317,210 @@ def build_html(df, q, crq_q, crq_col_names, std_name, nq, title,
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
   <style>
+    :root {{
+      --navy: {C["navy"]}; --ink: #2B3448; --muted: #667085; --line: #E6E8EC;
+      --bg: #F5F6F8; --card: #FFFFFF; --teal: {C["teal"]}; --accent-ink: #1F7F6D;
+      --radius: 16px; --nav-h: 52px;
+    }}
     *, *::before, *::after {{ box-sizing: border-box; }}
+    html {{ scroll-behavior: smooth; }}
     body {{
-      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-      background: #f0f2f5; color: {C["navy"]}; margin: 0; padding: 0; line-height: 1.5;
+      font-family: {FONT}; font-feature-settings: 'cv11', 'tnum';
+      background: var(--bg); color: var(--ink); margin: 0; line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
     }}
-    header {{
-      background: {C["navy"]}; color: white;
-      padding: 14px 36px; position: sticky; top: 0; z-index: 100;
-      display: flex; align-items: center; justify-content: space-between;
-      flex-wrap: wrap; gap: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.25); min-height: {HEADER_H}px;
+
+    /* ── Hero ── */
+    .hero {{
+      background: radial-gradient(1200px 300px at 85% -40%, rgba(53,174,151,.35), transparent 60%),
+                  linear-gradient(135deg, #1F2A44 0%, #273557 100%);
+      color: white; padding: 22px 32px 30px;
     }}
-    header h1 {{ margin: 0; font-size: 1.15rem; font-weight: 700; }}
-    nav {{ display: flex; gap: 5px; flex-wrap: wrap; }}
+    .hero-inner {{ max-width: 1080px; margin: 0 auto; }}
+    .home-link {{
+      display: inline-flex; align-items: center; gap: 6px; color: rgba(255,255,255,.75);
+      text-decoration: none; font-size: .82rem; font-weight: 500; margin-bottom: 18px;
+    }}
+    .home-link:hover {{ color: white; }}
+    .eyebrow {{
+      font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+      color: #8FE0CF; margin: 0 0 6px;
+    }}
+    .hero h1 {{ margin: 0; font-size: clamp(1.5rem, 3.2vw, 2.1rem); font-weight: 800; letter-spacing: -.02em; }}
+    .meta {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }}
+    .meta span {{
+      font-size: .8rem; padding: 4px 11px; border-radius: 999px;
+      background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14);
+    }}
+
+    /* ── Sticky nav ── */
+    nav {{
+      position: sticky; top: 0; z-index: 100; height: var(--nav-h);
+      background: rgba(255,255,255,.88); backdrop-filter: saturate(180%) blur(10px);
+      -webkit-backdrop-filter: saturate(180%) blur(10px);
+      border-bottom: 1px solid var(--line);
+    }}
+    .nav-inner {{
+      max-width: 1080px; height: 100%; margin: 0 auto; padding: 0 24px;
+      display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none;
+    }}
+    .nav-inner::-webkit-scrollbar {{ display: none; }}
     nav a {{
-      color: white; opacity: 0.82; text-decoration: none;
-      font-size: 0.82rem; padding: 4px 11px; border-radius: 20px;
-      background: rgba(255,255,255,0.13); transition: opacity .15s, background .15s;
-      white-space: nowrap;
+      color: var(--muted); text-decoration: none; font-size: .85rem; font-weight: 500;
+      padding: 6px 12px; border-radius: 8px; white-space: nowrap; transition: background .15s, color .15s;
     }}
-    nav a:hover {{ opacity: 1; background: rgba(255,255,255,0.25); }}
+    nav a:hover {{ color: var(--navy); background: #F0F2F5; }}
+    nav a.active {{ color: var(--accent-ink); background: #E6F5F1; font-weight: 600; }}
+
+    /* ── Layout ── */
     main {{
-      max-width: 1080px; margin: 0 auto; padding: 32px 24px 72px;
-      display: flex; flex-direction: column; gap: 28px;
+      max-width: 1080px; margin: 0 auto; padding: 28px 24px 72px;
+      display: flex; flex-direction: column; gap: 24px;
     }}
     section {{
-      background: white; border-radius: 14px; padding: 28px 30px 22px;
-      box-shadow: 0 1px 6px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.04);
-      scroll-margin-top: {HEADER_H + 12}px;
+      background: var(--card); border-radius: var(--radius); padding: 26px 30px 24px;
+      border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(16,24,40,.04);
+      scroll-margin-top: calc(var(--nav-h) + 16px);
     }}
-    section h2 {{
-      color: {C["navy"]}; font-size: 1.15rem; font-weight: 700;
-      margin: 0 0 3px; padding-bottom: 10px; border-bottom: 3px solid {C["teal"]};
+    .sec-head {{
+      display: flex; align-items: flex-start; gap: 14px;
+      padding-bottom: 16px; margin-bottom: 8px; border-bottom: 1px solid var(--line);
     }}
-    section p.subtitle {{ color: #777; font-size: 0.85rem; margin: 6px 0 16px; font-style: italic; }}
+    .sec-num {{
+      flex: none; width: 32px; height: 32px; border-radius: 10px; margin-top: 1px;
+      display: grid; place-items: center; font-size: .9rem; font-weight: 700;
+      background: #E6F5F1; color: var(--accent-ink);
+    }}
+    section h2 {{ color: var(--navy); font-size: 1.25rem; font-weight: 700; letter-spacing: -.01em; margin: 0; }}
+    section p.subtitle {{ color: var(--muted); font-size: .9rem; margin: 3px 0 0; max-width: 72ch; }}
+    .divider {{ height: 1px; background: var(--line); margin: 22px 0 10px; }}
+    .note, .muted {{ color: var(--muted); }}
+    .note {{ font-size: .85rem; margin: 4px 0 0; }}
+
     .plotly-graph-div {{ width: 100% !important; }}
     .chart-grid .plotly-graph-div {{ height: 320px !important; }}
-    .chart-grid {{
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;
-    }}
-    .chart-grid-2 {{
-      display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
-    }}
-    @media (max-width: 640px) {{
-      .chart-grid-2 {{ grid-template-columns: 1fr; }}
-    }}
+    .chart-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }}
+    .chart-grid-2 {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }}
     .scroll-x {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
     .scroll-x > * {{ min-width: 520px; }}
-    .q-btns {{ display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; padding: 0 2px; }}
+
+    /* ── KPI tiles ── */
+    .kpi-row {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin: 18px 0 10px; }}
+    .kpi {{
+      position: relative; border: 1px solid var(--line); border-radius: 12px;
+      padding: 16px 18px 14px 20px; background: white; overflow: hidden;
+    }}
+    .kpi::before {{ content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--accent); }}
+    .kpi-label {{ font-size: .78rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }}
+    .kpi-value {{ font-size: 2rem; font-weight: 800; color: var(--navy); line-height: 1.15; margin-top: 4px; letter-spacing: -.02em; }}
+    .kpi-value small {{ font-size: 1rem; font-weight: 600; color: var(--muted); }}
+    .kpi-hint {{ font-size: .8rem; color: var(--muted); margin-top: 2px; }}
+
+    /* ── Toggle buttons ── */
+    .q-btns {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 14px 0 6px; }}
+    .q-btns-center {{ justify-content: flex-start; }}
+    .btn-label {{ font-size: .75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-right: 4px; }}
     .q-btn {{
-      font-size: 0.78rem; padding: 3px 9px; border-radius: 6px;
-      border: 1px solid #CCC; background: white; cursor: pointer;
-      color: {C["navy"]}; transition: background .1s, color .1s;
+      font: inherit; font-size: .82rem; font-weight: 500; min-width: 34px; padding: 5px 11px;
+      border-radius: 8px; border: 1px solid var(--line); background: white; cursor: pointer;
+      color: var(--ink); transition: background .12s, border-color .12s, color .12s;
     }}
-    .q-btn:hover {{ background: #f0f2f5; }}
-    .q-btn-active {{
-      background: {C["navy"]} !important; color: white !important;
-      border-color: {C["navy"]} !important;
+    .q-btn:hover {{ background: #F0F2F5; border-color: #D0D5DD; }}
+    .q-btn:focus-visible {{ outline: 2px solid var(--teal); outline-offset: 2px; }}
+    .q-btn-active {{ background: var(--navy) !important; color: white !important; border-color: var(--navy) !important; }}
+
+    /* ── Distractor question card ── */
+    .q-card {{
+      display: flex; gap: 14px; align-items: flex-start; margin: 12px 0 6px;
+      background: #F8F9FB; border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px;
     }}
-    footer {{ text-align: center; padding: 28px; font-size: 0.78rem; color: #aaa; }}
-    @media (max-width: 640px) {{
-      header {{ padding: 12px 16px; flex-direction: column; align-items: flex-start; }}
-      main {{ padding: 16px 12px 48px; gap: 18px; }}
-      section {{ padding: 20px 16px 16px; }}
+    .q-card-num {{
+      flex: none; font-weight: 700; font-size: .85rem; color: white; background: var(--navy);
+      border-radius: 8px; padding: 3px 9px; margin-top: 1px;
+    }}
+    .q-card p {{ margin: 0; font-size: .98rem; color: var(--navy); line-height: 1.5; }}
+    .dis-legend {{ display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .8rem; color: var(--muted); margin: 10px 0 0; }}
+    .dis-legend i {{ display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }}
+
+    /* ── Callout ── */
+    .callout {{ margin-top: 16px; background: #F4F7FE; border: 1px solid #DCE5FB; border-radius: 12px; padding: 14px 18px; }}
+    .callout-title {{ font-weight: 700; color: var(--navy); margin-bottom: 6px; font-size: .92rem; }}
+    .callout ul {{ margin: 0; padding-left: 18px; font-size: .92rem; }}
+    .callout li + li {{ margin-top: 4px; }}
+    .pill {{ display: inline-block; font-size: .75rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: white; border: 1px solid #DCE5FB; margin-left: 4px; }}
+
+    /* ── Takeaways ── */
+    .tk-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 12px; }}
+    .tk-panel {{ border: 1px solid var(--line); border-top: 4px solid var(--accent); border-radius: 12px; padding: 14px 16px 10px; background: linear-gradient(var(--tint), white 90px); }}
+    .tk-head {{ display: flex; align-items: center; justify-content: space-between; }}
+    .tk-title {{ font-size: 1.05rem; font-weight: 800; color: var(--accent); letter-spacing: -.01em; }}
+    .tk-count {{ font-size: .78rem; font-weight: 700; color: var(--accent); background: white; border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; }}
+    .tk-sub {{ font-size: .8rem; color: var(--muted); margin: 2px 0 8px; }}
+    .tk-panel ul {{ list-style: none; margin: 0; padding: 0; }}
+    .tk-panel li {{ display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 9px 0; border-top: 1px solid var(--line); }}
+    .tk-text {{ font-size: .9rem; color: var(--navy); line-height: 1.35; }}
+    .tk-q {{ display: block; font-size: .75rem; color: var(--muted); margin-top: 2px; }}
+    .tk-pct {{ font-weight: 800; font-size: .95rem; text-align: right; }}
+    .tk-bar {{ grid-column: 1 / -1; height: 4px; border-radius: 4px; background: #EEF0F3; overflow: hidden; }}
+    .tk-bar i {{ display: block; height: 100%; border-radius: 4px; }}
+    .tk-panel li.tk-empty {{ display: block; color: var(--muted); font-style: italic; font-size: .88rem; }}
+
+    footer {{ text-align: center; padding: 8px 24px 40px; font-size: .8rem; color: #98A2B3; }}
+
+    @media (max-width: 720px) {{
+      .hero {{ padding: 16px 16px 22px; }}
+      .nav-inner {{ padding: 0 12px; }}
+      main {{ padding: 16px 12px 48px; gap: 16px; }}
+      section {{ padding: 18px 16px 16px; border-radius: 12px; }}
+      .chart-grid-2 {{ grid-template-columns: 1fr; }}
+      .kpi-value {{ font-size: 1.6rem; }}
+    }}
+    @media print {{
+      nav, .q-btns {{ display: none; }}
+      body {{ background: white; }}
+      .hero {{ background: none; color: var(--navy); padding: 0 0 12px; }}
+      .home-link {{ display: none; }}
+      .eyebrow {{ color: var(--accent-ink); }}
+      .meta span {{ border-color: var(--line); background: none; }}
+      section {{ break-inside: avoid; box-shadow: none; }}
     }}
   </style>
 </head>
 <body>
-  <header>
-    <h1>{title}</h1>
-    <nav>{nav_links}</nav>
+  <header class="hero">
+    <div class="hero-inner">
+      <a class="home-link" href="{home_link}">← All reports</a>
+      <p class="eyebrow">GWHS Social Studies · Assessment Report</p>
+      <h1>{title}</h1>
+      <div class="meta">{meta_html}</div>
+    </div>
   </header>
+  <nav><div class="nav-inner">{nav_links}</div></nav>
   <main>{body}</main>
-  <footer>Generated {today}</footer>
+  <footer>Generated {today} · George Westinghouse CTE High School</footer>
   <script>
     setTimeout(function() {{ window.dispatchEvent(new Event('resize')); }}, 50);
     setTimeout(function() {{ window.dispatchEvent(new Event('resize')); }}, 300);
+    // Highlight the nav link for the section currently in view
+    (function() {{
+      var links = {{}};
+      document.querySelectorAll('nav a[href^="#"]').forEach(function(a) {{ links[a.getAttribute('href').slice(1)] = a; }});
+      if (!('IntersectionObserver' in window)) return;
+      var obs = new IntersectionObserver(function(entries) {{
+        entries.forEach(function(e) {{
+          if (!e.isIntersecting) return;
+          Object.values(links).forEach(function(a) {{ a.classList.remove('active'); }});
+          var a = links[e.target.id];
+          if (a) {{ a.classList.add('active'); var n = a.parentNode; n.scrollLeft = a.offsetLeft - (n.clientWidth - a.offsetWidth) / 2; }}
+        }});
+      }}, {{ rootMargin: '-30% 0px -60% 0px' }});
+      document.querySelectorAll('main section[id]').forEach(function(s) {{ obs.observe(s); }});
+    }})();
   </script>
 </body>
 </html>'''
