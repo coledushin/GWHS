@@ -33,7 +33,8 @@ GRID = '#EEF0F3'
 FONT = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"
 
 # Default class colors — overridden by config['class_colors'] in run()
-CLASS_COLORS = {'Bermejo': C['blue'], 'Sourial': C['blue'], 'Dushin': C['orange'], 'Kovelsky': C['teal'], 'Antaky': C['red']}
+CLASS_COLORS = {'Bermejo': C['blue'], 'Sourial': C['blue'], 'Dushin': C['orange'], 'Kovelsky': C['teal'], 'Antaky': C['red'],
+                'Other': C['gray']}
 
 LAYOUT = dict(
     plot_bgcolor='white', paper_bgcolor='white',
@@ -101,6 +102,123 @@ def section(title, anchor, content_html, subtitle='', num=None):
             f'<div><h2>{title}</h2>{sub}</div></div>{content_html}</section>')
 
 
+# ── Written-response structure (NYS Regents) ──────────────────────────────────
+# Global II:  Part II   CRQs 29–34b, 1 credit each (Set 1 = 29–31, Set 2 = 32–34b)
+#             Part III  Enduring Issues Essay, 0–5 rubric (two raters averaged → half points)
+# US History: Part II   two Short-Essay Questions (29, 30), 0–5 rubric each
+#             Part IIIA Civic Literacy short answers (31–36), 1 credit each
+#             Part IIIB Civic Literacy Essay (37), 0–5 rubric (two raters averaged)
+WRITTEN_PARTS = {'Part II', 'Part III', 'Part IIIA', 'Part IIIB'}
+_PART_ALIASES = {'Part II': ['SEQ', 'CRQ'], 'Part III': ['EIE'],
+                 'Part IIIA': ['IIIA'], 'Part IIIB': ['IIIB', 'CLE']}
+
+ESSAY_TARGET = 3   # rubric level treated as "on track" when summarizing 0–5 essays
+
+
+def _infer_subject(q):
+    """'US' or 'Global' from the content-standard codes (11.x = US, 10.x = Global)."""
+    codes = q['Content_Std'].dropna().astype(str) if 'Content_Std' in q.columns else pd.Series(dtype=str)
+    us, gl = codes.str.startswith('11.').sum(), codes.str.startswith('10.').sum()
+    return 'US' if us > gl else ('Global' if gl > us else None)
+
+
+def _task_tag(text):
+    """Short task label for a 1-credit question, from its wording."""
+    t = str(text).lower()
+    for keys, tag in [
+        (('cause-and-effect', 'cause and effect'),                   'Cause & effect'),
+        (('turning point',),                                         'Turning point'),
+        (('similarit', 'difference'),                                'Compare'),
+        (('historical circumstance', 'historical context',
+          'geographic context'),                                     'Context'),
+        (('audience', 'purpose', 'point of view', 'bias', 'reliab'), 'Sourcing'),
+        (('impact', 'effect'),                                       'Impact'),
+        (('effort',),                                                'Efforts'),
+    ]:
+        if any(k in t for k in keys):
+            return tag
+    return ''
+
+
+def _written_items(df, written_raw, subject):
+    """Describe each written question: rubric type, max points, display group and label."""
+    items = []
+    n_seq = sum(1 for _, part, *_ in written_raw if part == 'Part II')
+    for wid, part, row, _ in written_raw:
+        col      = f'W_{wid}'
+        vals     = df[col].dropna()
+        question = '' if pd.isna(row.get('Question', np.nan)) else str(row['Question']).strip()
+        content  = row.get('Content_standard', row.get('Content', ''))
+        is_us    = subject == 'US' or (subject is None and vals.max() > 1 if len(vals) else False)
+
+        if part == 'Part II' and is_us:
+            kind, mx, group = 'essay', 5, 'Short-Essay Questions'
+            k = sum(1 for it in items if it['group'] == group) + 1
+            label = f'SEQ {k}' if n_seq > 1 else 'SEQ'
+        elif part == 'Part II':
+            kind, mx, group, label = 'short', 1, 'Constructed Response Questions', f'Q{wid}'
+        elif part == 'Part IIIA':
+            kind, mx, group, label = 'short', 1, 'Civic Literacy Short Answers', f'Q{wid}'
+        elif part == 'Part IIIB':
+            kind, mx, group, label = 'essay', 5, 'Civic Literacy Essay', 'Civic Literacy Essay'
+        else:   # Part III
+            kind, mx, group, label = 'essay', 5, 'Enduring Issues Essay', 'Enduring Issues Essay'
+
+        set_name = ''
+        if kind == 'short' and part == 'Part II':
+            m = _re.match(r'^(\d+)', wid)
+            if m and 29 <= int(m.group(1)) <= 34:
+                set_name = 'Set 1' if int(m.group(1)) <= 31 else 'Set 2'
+
+        items.append(dict(id=wid, col=col, part=part, kind=kind, max=mx, group=group,
+                          label=label, set=set_name, question=question,
+                          tag=_task_tag(question) if kind == 'short' else '',
+                          std=_std_code(content) if pd.notna(content) else '',
+                          entered=bool(len(vals))))
+    return items
+
+
+def load_conversion(file):
+    """Parse a Regents 'Conversion Chart' sheet → (lookup, levels, raw_max) or None.
+
+    lookup[(raw_credits, essay_score)] = scale score; levels = [(n, lo, hi), …] for Levels 1–5.
+    """
+    try:
+        c = pd.read_excel(file, sheet_name='Conversion Chart', header=None)
+    except Exception:
+        return None
+    hdr_row = next((i for i in range(len(c))
+                    if pd.to_numeric(c.iloc[i, 2:], errors='coerce').notna().sum() >= 6), None)
+    if hdr_row is None:
+        return None
+    essay_vals = pd.to_numeric(c.iloc[hdr_row, 2:], errors='coerce')
+    lookup = {}
+    for i in range(hdr_row + 1, len(c)):
+        raw = pd.to_numeric(c.iloc[i, 1], errors='coerce')
+        if pd.isna(raw):
+            continue
+        for j, ev in essay_vals.items():
+            v = pd.to_numeric(c.iloc[i, j], errors='coerce')
+            if pd.notna(ev) and pd.notna(v):
+                lookup[(int(raw), float(ev))] = float(v)
+    levels = []
+    for i in range(len(c)):
+        for j in range(c.shape[1]):
+            cell = c.iloc[i, j]
+            m = _re.search(r'Level\s*(\d)', str(cell)) if isinstance(cell, str) else None
+            if not m:
+                continue
+            rng = _re.search(r'(\d+)\s*-\s*(\d+)', cell)
+            if not rng and i + 1 < len(c):
+                rng = _re.search(r'(\d+)\s*-\s*(\d+)', str(c.iloc[i + 1, j]))
+            if rng:
+                levels.append((int(m.group(1)), int(rng.group(1)), int(rng.group(2))))
+    if not lookup:
+        return None
+    raw_max = max(r for r, _ in lookup)
+    return lookup, sorted(set(levels)), raw_max
+
+
 # ── Data loading ──────────────────────────────────────────────────────────────
 def _std_code(v):
     """Strip a concatenated '<code>: <name>' content standard down to its code."""
@@ -109,27 +227,40 @@ def _std_code(v):
     return str(v).split(':', 1)[0].strip()
 
 
-def load_data(file):
+def load_data(file, subject=None):
     scores_raw = pd.read_excel(file, sheet_name='Scores')
     questions  = pd.read_excel(file, sheet_name='Questions')
     std_sheet  = pd.read_excel(file, sheet_name='Content Standards')
 
-    # Identify CRQ (Part II) question IDs so they are excluded from MC detection
-    crq_ids    = set()
+    # Written-response rows (Part II / III) — one entry per question id, in exam order
     non_mc_ids = set()
     q_id_col   = None
+    written_rows = []
     if 'Part' in questions.columns:
         q_id_col = '#' if '#' in questions.columns else ('CMA #' if 'CMA #' in questions.columns else None)
         if q_id_col:
-            written_parts = {'Part II', 'Part IIIA', 'Part IIIB'}
-            written_mask  = questions['Part'].astype(str).str.strip().isin(written_parts)
-            crq_ids       = set(questions[written_mask][q_id_col].astype(str).str.strip().tolist())
-            non_part_i    = questions[questions['Part'].astype(str).str.strip() != 'Part I']
-            non_mc_ids    = set(non_part_i[q_id_col].astype(str).str.strip().tolist())
+            parts      = questions['Part'].astype(str).str.strip()
+            non_mc_ids = set(questions[parts != 'Part I'][q_id_col].astype(str).str.strip().tolist())
+            seen = set()
+            for _, row in questions[parts.isin(WRITTEN_PARTS)].iterrows():
+                wid = str(row[q_id_col]).strip()
+                if wid not in seen:      # e.g. the Global essay has one row per document
+                    seen.add(wid)
+                    written_rows.append((wid, str(row['Part']).strip(), row))
 
-    # CRQ columns in Scores — matched by Q# string (handles '34a', '34b', etc.)
-    crq_cols_raw  = [c for c in scores_raw.columns if str(c).strip() in crq_ids]
-    crq_col_names = [f'CRQ_{str(c).strip()}' for c in crq_cols_raw]
+    # Match each written question to its Scores column: by Q# ('29', '34a'), or — when a part has a
+    # single question and no matching column — by the part's total column (e.g. a CMA's 'SEQ')
+    score_cols = {str(c).strip(): c for c in scores_raw.columns}
+    part_sizes = defaultdict(int)
+    for _, part, _ in written_rows:
+        part_sizes[part] += 1
+    written_raw = []   # (id, part, question row, raw Scores column)
+    for wid, part, row in written_rows:
+        raw = score_cols.get(wid)
+        if raw is None and part_sizes[part] == 1:
+            raw = next((score_cols[a] for a in _PART_ALIASES.get(part, []) if a in score_cols), None)
+        if raw is not None:
+            written_raw.append((wid, part, row, raw))
 
     # MC columns: integer-named Scores columns NOT in any non-Part-I set
     # (excludes Part II CRQs and Part III essay questions)
@@ -208,8 +339,8 @@ def load_data(file):
     }
     for raw_col, i in zip(mc_cols_raw, range(1, NQ + 1)):
         rename[raw_col] = f'Q{i}_ans'
-    for raw_col in crq_cols_raw:
-        rename[raw_col] = f'CRQ_{str(raw_col).strip()}'
+    for wid, _, _, raw_col in written_raw:
+        rename[raw_col] = f'W_{wid}'
 
     df_renamed = scores_raw.rename(columns=rename)
     if 'Class' in df_renamed.columns and df_renamed['Class'].notna().any():
@@ -243,34 +374,13 @@ def load_data(file):
     df['Is_ELL'] = _is_flagged(df['ELL'])
     df['Is_IEP'] = _is_flagged(df['IEP'])
 
-    # CRQ scoring — blank cells stay NaN; CRQ_Score treats blanks as 0
-    for col in crq_col_names:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-    if crq_col_names:
-        df['CRQ_Score'] = df[crq_col_names].fillna(0).sum(axis=1)
-        df['CRQ_Blank'] = df[crq_col_names].isna().sum(axis=1)
+    for wid, *_ in written_raw:
+        df[f'W_{wid}'] = pd.to_numeric(df[f'W_{wid}'], errors='coerce')
 
-    # CRQ question metadata (covers Part II, IIIA, and IIIB when present)
-    crq_q = pd.DataFrame()
-    if crq_ids and 'Part' in questions.columns:
-        written_mask = questions['Part'].astype(str).str.strip().isin({'Part II', 'Part IIIA', 'Part IIIB'})
-        crq_q = questions[written_mask].copy()
-        col_map = {q_id_col: 'Q_Label'} if q_id_col else {}
-        if 'Content' in crq_q.columns:
-            col_map['Content'] = 'Content_Std'
-        elif 'Content_standard' in crq_q.columns:
-            col_map['Content_standard'] = 'Content_Std'
-        crq_q = crq_q.rename(columns=col_map)
-        if 'Q_Label' in crq_q.columns:
-            crq_q['Q_Label'] = crq_q['Q_Label'].astype(str).str.strip()
-        if 'Question' not in crq_q.columns:
-            crq_q['Question'] = ''
-        if 'Content_Std' not in crq_q.columns:
-            crq_q['Content_Std'] = ''
-        crq_q['Content_Std'] = crq_q['Content_Std'].map(_std_code)
-        crq_q = crq_q.reset_index(drop=True)
+    subject = subject or _infer_subject(q)
+    written = _written_items(df, written_raw, subject)
 
-    return df, q, crq_q, crq_col_names, std_lookup, std_name, answer_cols, correct_cols, NQ
+    return df, q, written, subject, std_lookup, std_name, answer_cols, correct_cols, NQ
 
 
 # ── Figure builders ───────────────────────────────────────────────────────────
@@ -946,113 +1056,10 @@ def fig_stimulus_type(df, q, nq):
     return fig
 
 
-# ── CRQ (Part II) builders ────────────────────────────────────────────────────
-def fig_crq_bar(df, crq_q, crq_col_names):
-    """Stacked horizontal bar: per-question breakdown of Full / Partial / No Credit / Blank.
-    Handles both binary (0/1) and multi-point scoring automatically."""
-    if not crq_col_names:
-        return None
-
-    if not crq_q.empty and 'Q_Label' in crq_q.columns:
-        labels  = crq_q['Q_Label'].tolist()
-        q_texts = crq_q['Question'].fillna('').astype(str).str.strip().tolist()
-    else:
-        labels  = [c.replace('CRQ_', '') for c in crq_col_names]
-        q_texts = [''] * len(crq_col_names)
-
-    y_labels  = [str(lbl) for lbl in labels]
-    total     = len(df)
-    pct_full, pct_part, pct_0, pct_blank = [], [], [], []
-    hov_full, hov_part, hov_0, hov_bl   = [], [], [], []
-
-    for col, lbl, qtxt in zip(crq_col_names, labels, q_texts):
-        vals      = df[col]
-        max_score = float(vals.max()) if vals.notna().any() else 1.0
-        n_blank   = int(vals.isna().sum())
-        non_blank = vals.dropna()
-
-        n_f = int((non_blank >= max_score).sum())
-        n_p = int(((non_blank > 0) & (non_blank < max_score)).sum())
-        n_0 = int((non_blank == 0).sum())
-
-        pct_full.append(n_f / total)
-        pct_part.append(n_p / total)
-        pct_0.append(n_0 / total)
-        pct_blank.append(n_blank / total)
-
-        short_q  = qtxt[:70] + ('…' if len(qtxt) > 70 else '')
-        max_str  = f'/{int(max_score) if max_score == int(max_score) else max_score}'
-        full_lbl = f'Full Credit ({int(max_score) if max_score == int(max_score) else max_score} pts)' if max_score > 1 else 'Scored 1'
-        hov_full.append(f'<b>{lbl}</b>: {short_q}<br>{full_lbl}: {n_f} ({n_f/total:.0%})')
-        hov_part.append(f'<b>{lbl}</b>: {short_q}<br>Partial Credit: {n_p} ({n_p/total:.0%})')
-        hov_0.append(f'<b>{lbl}</b>: {short_q}<br>No Credit (0): {n_0} ({n_0/total:.0%})')
-        hov_bl.append(f'<b>{lbl}</b>: {short_q}<br>Left blank: {n_blank} ({n_blank/total:.0%})')
-
-    def _seg(x_vals, name, color, hover):
-        return go.Bar(
-            y=y_labels, x=x_vals, name=name, orientation='h',
-            marker_color=color, marker_line_color='white', marker_line_width=1,
-            text=[f'{p:.0%}' if p >= 0.07 else '' for p in x_vals],
-            textposition='inside', insidetextanchor='middle',
-            textfont=dict(color='white', size=11),
-            hovertext=hover, hoverinfo='text',
-        )
-
-    fig = go.Figure([
-        _seg(pct_full,  'Full Credit',    C['teal'],   hov_full),
-        _seg(pct_part,  'Partial Credit', C['orange'], hov_part),
-        _seg(pct_0,     'No Credit',      C['red'],    hov_0),
-        _seg(pct_blank, 'Left Blank',     C['lgray'],  hov_bl),
-    ])
-    fig.update_layout(**LAYOUT,
-        title='Written Response Results — Per Question',
-        height=max(300, 60 + 65 * len(crq_col_names)),
-        barmode='stack',
-        xaxis=dict(tickformat='.0%', title='% of Students', range=[0, 1.0],
-                   showgrid=True, gridcolor='#EEEEEE', zeroline=False),
-        yaxis=dict(autorange='reversed', showgrid=False, tickfont=dict(size=13),
-                   ticksuffix='  '),
-        legend=dict(orientation='h', y=-0.18, x=0.5, xanchor='center'),
-    )
-    fig.update_layout(margin=dict(l=60, r=20, t=50, b=20))
-    return fig
-
-
-def fig_crq_class_bar(df, crq_col_names):
-    """Average written-response total score per class & period."""
-    if not crq_col_names:
-        return None
-    max_total = float(sum(df[col].max() for col in crq_col_names if df[col].notna().any()))
-    cp = df.groupby(['Class', 'Period'])['CRQ_Score'].agg(['mean', 'count']).reset_index()
-    classes = sorted(df['Class'].unique())
-    bar_width, group_gap = 0.22, 0.15
-    fig = go.Figure()
-    current_x = 0.0
-    class_centers = {}
-    for cls in classes:
-        cls_data = cp[cp['Class'] == cls].sort_values('Period')
-        n_bars   = len(cls_data)
-        for pi, (_, row) in enumerate(cls_data.iterrows()):
-            x_pos = current_x + pi * bar_width
-            fig.add_trace(go.Bar(
-                x=[x_pos], y=[row['mean']],
-                marker_color=CLASS_COLORS.get(cls, C['blue']),
-                marker_line_color='white', marker_line_width=1,
-                text=[f"P{int(row['Period'])}"],
-                textposition='inside', insidetextanchor='end',
-                textfont=dict(color='white', size=11),
-                hovertemplate=f'Avg {row["mean"]:.1f}/{max_total:.0f}  (n={int(row["count"])})<extra></extra>',
-                showlegend=False, width=bar_width * 0.85,
-            ))
-        class_centers[cls] = current_x + (n_bars - 1) * bar_width / 2
-        current_x += n_bars * bar_width + group_gap
-    fig.update_xaxes(tickvals=list(class_centers.values()), ticktext=list(class_centers.keys()),
-                     showgrid=False, zeroline=False,
-                     range=[-0.25, current_x - group_gap + 0.25])
-    fig.update_yaxes(title_text=f'Avg Written Score (out of {max_total:.0f})', range=[0, max_total * 1.28],
-                     showgrid=True, gridcolor='#EEEEEE', zeroline=False)
-    fig.update_layout(**LAYOUT, title='Avg Written Score by Class & Period', height=300)
-    return fig
+# ── Written response & scale score builders ───────────────────────────────────
+ESSAY_COLORS = {0: '#B83246', 0.5: '#CF4556', 1: '#E0625F', 1.5: '#EB8058', 2: '#F2A541',
+                2.5: '#F6C56F', 3: '#8ED1C0', 3.5: '#5BBFA9', 4: '#35AE97', 4.5: '#22917B', 5: '#16735F'}
+LEVEL_COLORS = {1: C['red'], 2: C['orange'], 3: C['teal'], 4: C['green'], 5: '#145C4A'}
 
 
 def _kpi(value, label, color, hint=''):
@@ -1062,29 +1069,363 @@ def _kpi(value, label, color, hint=''):
             f'<div class="kpi-value">{value}</div>{hint_html}</div>')
 
 
-def crq_kpi_html(df, crq_col_names):
-    if not crq_col_names:
+def _wrap(text, width=70):
+    words, lines, cur = str(text).split(), [], ''
+    for w in words:
+        if cur and len(cur) + len(w) + 1 > width:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = f'{cur} {w}'.strip()
+    return '<br>'.join(lines + ([cur] if cur else []))
+
+
+def _essay_color(v):
+    return ESSAY_COLORS.get(float(v), C['gray'])
+
+
+def _essay_status_color(avg):
+    return C['teal'] if avg >= ESSAY_TARGET else (C['orange'] if avg >= ESSAY_TARGET - 1 else C['red'])
+
+
+def _written_pool(df, items):
+    """Students with at least one written score entered (others weren't scored / were absent)."""
+    cols = [it['col'] for it in items if it['entered']]
+    return df[df[cols].notna().any(axis=1)] if cols else df.iloc[0:0]
+
+
+def _views(df, show_classes):
+    return ['Overall'] + (sorted(df['Class'].unique().tolist())
+                          if show_classes and df['Class'].nunique() > 1 else [])
+
+
+def _with_views(fig, cfgs, traces=None):
+    """Chart plus Overall / per-class buttons. cfgs = {view: Plotly.restyle update}."""
+    chart_div = to_div(fig)
+    if len(cfgs) <= 1:
+        return chart_div
+    m = _re.search(r'<div id="([^"]+)"', chart_div)
+    fig_id = m.group(1) if m else 'plotly-view'
+    ctr_id = 'vw-' + fig_id[-8:]
+    btns = ''.join(
+        f'<button class="q-btn{" q-btn-active" if i == 0 else ""}" '
+        f'data-view="{v}" data-ctr="{ctr_id}">{v}</button>'
+        for i, v in enumerate(cfgs))
+    tr_js = json.dumps(traces) if traces is not None else 'undefined'
+    return f'''<div class="q-btns"><span class="btn-label">View</span>{btns}</div>
+{chart_div}
+<script>
+(function(){{
+  var cfgs={json.dumps(cfgs)};
+  function attach(){{
+    var el=document.getElementById('{fig_id}');
+    if(!el){{setTimeout(attach,80);return;}}
+    document.querySelectorAll('.q-btn[data-ctr="{ctr_id}"]').forEach(function(btn){{
+      btn.addEventListener('click',function(){{
+        Plotly.restyle(el, cfgs[this.dataset.view], {tr_js});
+        document.querySelectorAll('.q-btn[data-ctr="{ctr_id}"]').forEach(function(b){{
+          b.classList.toggle('q-btn-active', b===btn);
+        }});
+      }});
+    }});
+  }}
+  attach();
+}})();
+</script>'''
+
+
+def written_kpi_html(df, items):
+    pool = _written_pool(df, items)
+    if pool.empty:
         return ''
-    max_total     = float(sum(df[col].max() for col in crq_col_names if df[col].notna().any()))
-    if max_total <= 0:
+    tiles, groups = [], []
+    for it in items:
+        if it['entered'] and it['group'] not in groups:
+            groups.append(it['group'])
+    for g in groups:
+        g_items = [it for it in items if it['group'] == g and it['entered']]
+        if g_items[0]['kind'] == 'short':
+            credits = pool[[it['col'] for it in g_items]].fillna(0).sum(axis=1)
+            n   = len(g_items)
+            avg = credits.mean()
+            tiles.append(_kpi(f'{avg:.1f}<small> / {n}</small>', g, pct_color(avg / n),
+                              f'{avg / n:.0%} of credits earned · 1 credit each'))
+        else:
+            scores = pd.concat([pool[it['col']].fillna(0) for it in g_items])
+            avg    = scores.mean()
+            lbl    = f'{g} (avg per essay)' if len(g_items) > 1 else g
+            tiles.append(_kpi(f'{avg:.1f}<small> / 5</small>', lbl, _essay_status_color(avg),
+                              f'{(scores >= ESSAY_TARGET).mean():.0%} scored {ESSAY_TARGET} or higher'))
+    return '<div class="kpi-row">' + ''.join(tiles) + '</div>'
+
+
+def written_short_html(df, items, show_classes=True):
+    """% of students earning the credit on each 1-credit question, grouped by set."""
+    items = [it for it in items if it['kind'] == 'short' and it['entered']]
+    if not items:
+        return ''
+    pool  = _written_pool(df, items)
+    names = [f"{it['label']} · {it['tag']}" if it['tag'] else it['label'] for it in items]
+    y     = [[it['set'] or it['group'] for it in items], names] if any(it['set'] for it in items) else names
+
+    def stats(fdf):
+        p = [float(fdf[it['col']].fillna(0).mean()) for it in items]
+        hover = [f"<b>{it['label']}</b>{' · ' + it['tag'] if it['tag'] else ''}<br>"
+                 f"{_wrap(it['question'])}<br><br>{pv:.0%} earned the credit "
+                 f"(n={len(fdf)}; {int(fdf[it['col']].isna().sum())} blank)"
+                 for it, pv in zip(items, p)]
+        return p, hover
+
+    views = _views(pool, show_classes)
+    data  = {v: stats(pool if v == 'Overall' else pool[pool['Class'] == v]) for v in views}
+    p0, h0 = data['Overall']
+    fig = go.Figure(go.Bar(
+        y=y, x=p0, orientation='h', marker_color=[pct_color(v) for v in p0], width=0.62,
+        text=[f'{v:.0%}' for v in p0], textposition='outside', cliponaxis=False,
+        textfont=dict(size=12, color=C['navy']),
+        hovertext=h0, hoverinfo='text', showlegend=False,
+    ))
+    add_color_legend(fig)
+    fig.update_layout(**LAYOUT,
+        title='Short Answers — % of Students Earning the Credit',
+        height=max(260, 110 + 44 * len(items)),
+        legend=dict(orientation='h', y=-0.12, x=0.5, xanchor='center', yanchor='top', font=dict(size=11)),
+        xaxis=dict(tickformat='.0%', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
+                   showgrid=True, zeroline=False),
+        yaxis=dict(autorange='reversed', showgrid=False, tickfont=dict(size=12), ticksuffix='  '),
+    )
+    fig.update_layout(margin=dict(l=20, r=30, t=50, b=60))
+    cfgs = {v: {'x': [data[v][0]], 'marker.color': [[pct_color(x) for x in data[v][0]]],
+                'text': [[f'{x:.0%}' for x in data[v][0]]], 'hovertext': [data[v][1]]} for v in views}
+    return _with_views(fig, cfgs, traces=[0])
+
+
+def written_essay_html(df, items, show_classes=True):
+    """Rubric-score distribution (0–5, with half points) for each essay."""
+    items = [it for it in items if it['kind'] == 'essay' and it['entered']]
+    if not items:
+        return ''
+    pool   = _written_pool(df, items)
+    scores = sorted(set(float(v) for it in items for v in pool[it['col']].dropna().unique())
+                    | {0.0, 1.0, 2.0, 3.0, 4.0, 5.0})
+
+    def stats(fdf):
+        n = max(len(fdf), 1)
+        shares = {s: [float((fdf[it['col']] == s).sum() / n) for it in items] for s in scores}
+        blank  = [float(fdf[it['col']].isna().sum() / n) for it in items]
+        labels = [f"{it['label']}  ·  avg {fdf[it['col']].fillna(0).mean():.1f}" for it in items]
+        return shares, blank, labels
+
+    views = _views(pool, show_classes)
+    data  = {v: stats(pool if v == 'Overall' else pool[pool['Class'] == v]) for v in views}
+    shares, blank, labels = data['Overall']
+
+    def _txt(xs):
+        return [f'{x:.0%}' if x >= 0.06 else '' for x in xs]
+
+    fig = go.Figure()
+    for s in scores:
+        dark = s <= 2 or s >= 4
+        fig.add_trace(go.Bar(
+            y=labels, x=shares[s], orientation='h', name=f'{s:g}',
+            marker_color=_essay_color(s), marker_line_color='white', marker_line_width=1,
+            text=_txt(shares[s]), textposition='inside', insidetextanchor='middle',
+            textfont=dict(color='white' if dark else C['navy'], size=11),
+            hovertemplate=f'Score {s:g}: %{{x:.0%}}<extra></extra>',
+        ))
+    fig.add_trace(go.Bar(
+        y=labels, x=blank, orientation='h', name='Blank', marker_color=C['lgray'],
+        marker_line_color='white', marker_line_width=1, text=_txt(blank),
+        textposition='inside', insidetextanchor='middle', textfont=dict(color=C['navy'], size=11),
+        hovertemplate='No score entered: %{x:.0%}<extra></extra>',
+    ))
+    fig.update_layout(**LAYOUT,
+        title='Essays — Rubric Score Distribution (0–5)', barmode='stack',
+        height=max(240, 150 + 58 * len(items)),
+        legend=dict(orientation='h', y=-0.18, x=0.5, xanchor='center', yanchor='top',
+                    title=dict(text='Score  ', font=dict(size=11)), traceorder='normal', font=dict(size=11)),
+        xaxis=dict(tickformat='.0%', range=[0, 1], showgrid=True, zeroline=False),
+        yaxis=dict(autorange='reversed', showgrid=False, tickfont=dict(size=12), ticksuffix='  '),
+    )
+    fig.update_layout(margin=dict(l=20, r=20, t=50, b=60))
+    cfgs = {v: {'x': [data[v][0][s] for s in scores] + [data[v][1]],
+                'y': [data[v][2]] * (len(scores) + 1),
+                'text': [_txt(data[v][0][s]) for s in scores] + [_txt(data[v][1])]} for v in views}
+    html = _with_views(fig, cfgs)
+
+    classes = _views(pool, show_classes)[1:]
+    if classes:
+        cfig = go.Figure()
+        for cls in classes:
+            cdf = pool[pool['Class'] == cls]
+            avgs = [float(cdf[it['col']].fillna(0).mean()) for it in items]
+            cfig.add_trace(go.Bar(
+                x=[it['label'] for it in items], y=avgs, name=f'{cls} (n={len(cdf)})',
+                marker_color=CLASS_COLORS.get(cls, C['blue']),
+                text=[f'{a:.1f}' for a in avgs], textposition='outside', cliponaxis=False,
+                textfont=dict(size=11, color=C['navy']),
+                hovertemplate=f'{cls}: %{{y:.2f}} / 5<extra></extra>',
+            ))
+        cfig.add_hline(y=ESSAY_TARGET, line_dash='dot', line_color=C['navy'], opacity=0.45,
+                       annotation_text=f'Level {ESSAY_TARGET}', annotation_position='top right',
+                       annotation_font=dict(size=10, color=C['navy']))
+        cfig.update_layout(**LAYOUT, title='Average Essay Score by Class', barmode='group', height=340,
+            legend=dict(orientation='h', y=-0.15, x=0.5, xanchor='center', yanchor='top'),
+            xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=12)),
+            yaxis=dict(title='Average rubric score', tickvals=[0, 1, 2, 3, 4, 5], range=[0, 5.6],
+                       showgrid=True, zeroline=False),
+        )
+        html += to_div(cfig)
+    return html
+
+
+def written_section_html(df, items, show_classes=True):
+    entered = [it for it in items if it['entered']]
+    if not entered:
         return ('<div class="callout"><div class="callout-title">No written scores yet</div>'
-                '<p class="muted" style="margin:0">Written-response columns are present but no points '
-                'have been entered.</p></div>')
-    avg           = df['CRQ_Score'].mean()
-    pct_70        = (df['CRQ_Score'] >= max_total * 0.70).mean()
-    pct_any_blank = (df['CRQ_Blank'] > 0).mean()
+                '<p class="muted" style="margin:0">The written-response questions are listed in the data '
+                'file, but no scores have been entered.</p></div>')
+    html = written_kpi_html(df, items)
+    short = written_short_html(df, items, show_classes)
+    essay = written_essay_html(df, items, show_classes)
+    if short:
+        html += '<h3 class="sub-head">Short answers <span>1 credit each</span></h3>' + short
+    if essay:
+        html += ('<h3 class="sub-head">Essays <span>scored 0–5 on the NYSED rubric · '
+                 'half points are the average of two raters</span></h3>' + essay)
+    missing = [it['label'] for it in items if not it['entered']]
+    if missing:
+        html += f'<p class="note">No scores entered yet for: {", ".join(missing)}.</p>'
+    return html
 
 
-    max_str   = f'{max_total:.0f}' if max_total == int(max_total) else f'{max_total:.1f}'
-    avg_color = C['teal'] if avg / max_total >= 0.70 else (C['orange'] if avg / max_total >= 0.50 else C['red'])
-    return ('<div class="kpi-row">'
-            + _kpi(f'{avg:.1f}<small> / {max_str}</small>', 'Avg written score', avg_color,
-                   f'{avg / max_total:.0%} of possible points')
-            + _kpi(f'{pct_70:.0%}', 'Scored 70%+', C['teal'] if pct_70 >= 0.50 else C['orange'],
-                   'on the written section')
-            + _kpi(f'{pct_any_blank:.0%}', 'Left ≥1 part blank',
-                   C['orange'] if pct_any_blank > 0.10 else C['teal'], 'blanks count as 0')
+def written_subtitle(items):
+    parts = []
+    for g in dict.fromkeys(it['group'] for it in items):
+        g_items = [it for it in items if it['group'] == g]
+        it = g_items[0]
+        if it['kind'] == 'short':
+            parts.append(f"{g} ({it['part']}) are worth 1 credit each")
+        elif len(g_items) > 1:
+            parts.append(f"the {g} ({it['part']}) are each scored 0–5 on a rubric")
+        else:
+            parts.append(f"the {g} ({it['part']}) is scored 0–5 on a rubric")
+    text = '; '.join(parts)
+    return (text[0].upper() + text[1:] + '. Blank answers count as 0; students with no written '
+            'scores at all are left out of this section.')
+
+
+# ── Regents scale score ───────────────────────────────────────────────────────
+def _level_of(score, levels):
+    for n, lo, hi in levels:
+        if lo <= score <= hi:
+            return n
+    return None
+
+
+def _leverage_html(sdf, conv, items, subject):
+    """Project pass rates under simple what-if scenarios using the exam's conversion chart."""
+    lookup, levels, raw_max = conv
+    essay = next((it for it in items if it['part'] in ('Part III', 'Part IIIB') and it['entered']), None)
+    if essay is None:
+        return ''
+    others = [it for it in items if it is not essay]
+    raw    = sdf['MC_Score'] + sum((sdf[it['col']].fillna(0) for it in others), pd.Series(0, index=sdf.index))
+    ess    = sdf[essay['col']].fillna(0)
+    final  = pd.to_numeric(sdf['Final'], errors='coerce')
+
+    def scale(r_series, e_series):
+        return pd.Series([lookup.get((int(min(round(r), raw_max)), float(min(e, 5))), np.nan)
+                          for r, e in zip(r_series, e_series)], index=sdf.index)
+
+    base = scale(raw, ess)
+    if (base == final).mean() < 0.9:   # data doesn't reproduce the chart — skip projections
+        return ''
+    cut = next((lo for n, lo, _ in levels if n == 3), 65)
+    base_pass = (base >= cut)
+    extra = ('two more multiple-choice or short-answer credits, or one rubric level higher on both SEQs'
+             if subject == 'US' else 'two more multiple-choice or CRQ credits')
+    rows = []
+    for name, detail, r2, e2 in [
+        (f'Every {essay["label"]} one rubric level higher', 'e.g. a 2 becomes a 3', raw, (ess + 1).clip(upper=5)),
+        ('Two more raw credits per student', extra, (raw + 2).clip(upper=raw_max), ess),
+    ]:
+        proj = scale(r2, e2)
+        newly = int(((proj >= cut) & ~base_pass).sum())
+        rows.append(f'<tr><td><b>{name}</b><span>{detail}</span></td>'
+                    f'<td>{base_pass.mean():.0%} → <b>{(proj >= cut).mean():.0%}</b></td>'
+                    f'<td>+{newly}</td><td>+{(proj - base).mean():.1f}</td></tr>')
+    return (f'<h3 class="sub-head">What moves the scale score <span>projected with this exam\'s '
+            f'conversion chart</span></h3>'
+            f'<div class="scroll-x"><table class="lev-table"><thead><tr><th>If…</th><th>Passing ({cut}+)</th>'
+            f'<th>Newly passing</th><th>Avg scale gain</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+            f'<p class="note">The essay is the column of the conversion chart, so each rubric level is worth '
+            f'several scale points; each raw credit is worth about two or three.</p>')
+
+
+def scale_section_html(df, conv, items, subject, show_classes=True):
+    lookup, levels, raw_max = conv
+    final = pd.to_numeric(df['Final'], errors='coerce')
+    sdf, f = df[final.notna()], final.dropna()
+    if f.empty:
+        return ''
+    cut     = next((lo for n, lo, _ in levels if n == 3), 65)
+    mastery = next((lo for n, lo, _ in levels if n == 5), 85)
+    near    = int(((f >= cut - 5) & (f < cut)).sum())
+    missing = [it['label'] for it in items if not it['entered']]
+    warn = ('<div class="callout callout-warn"><div class="callout-title">Written scores not entered yet</div>'
+            f'<p style="margin:0">No scores are in the data for {", ".join(missing)}, so these scale scores '
+            'count only what has been entered. Treat them as a floor, not final results.</p></div>'
+            if missing else '')
+    kpis = warn + ('<div class="kpi-row">'
+            + _kpi(f'{f.mean():.0f}', 'Average scale score', LEVEL_COLORS.get(_level_of(round(f.mean()), levels), C['blue']),
+                   f'median {f.median():.0f}')
+            + _kpi(f'{(f >= cut).mean():.0%}', f'Passing ({cut}+)', C['teal'] if (f >= cut).mean() >= 0.65 else C['orange'],
+                   f'{int((f >= cut).sum())} of {len(f)} students')
+            + _kpi(f'{(f >= mastery).mean():.0%}', f'Mastery ({mastery}+)', LEVEL_COLORS[5],
+                   f'{int((f >= mastery).sum())} students')
+            + _kpi(str(near), 'Within 5 of passing', C['orange'], f'scored {cut - 5}–{cut - 1}')
             + '</div>')
+
+    bins = list(range(0, 100, 5))
+    counts = [int(((f >= b) & (f < b + 5 if b < 95 else f <= 100)).sum()) for b in bins]
+    fig = go.Figure(go.Bar(
+        x=[b + 2.5 for b in bins], y=counts, width=4.4,
+        marker_color=[LEVEL_COLORS.get(_level_of(b + 2, levels), C['gray']) for b in bins],
+        hovertext=[f'{b}–{b + 4 if b < 95 else 100}: {c} students' for b, c in zip(bins, counts)],
+        hoverinfo='text', showlegend=False,
+    ))
+    for n, lo, hi in levels:
+        fig.add_vrect(x0=lo, x1=hi + 1, fillcolor=LEVEL_COLORS[n], opacity=0.06, line_width=0,
+                      annotation_text=f'Level {n}', annotation_position='top',
+                      annotation_font=dict(size=11, color=LEVEL_COLORS[n]))
+    fig.add_vline(x=cut, line_dash='dot', line_color=C['navy'], opacity=0.5, line_width=1.5)
+    fig.update_layout(**LAYOUT, title='Scale Score Distribution', height=340,
+        xaxis=dict(title='Scale score', range=[0, 101], tickvals=list(range(0, 101, 10)),
+                   showgrid=False, zeroline=False),
+        yaxis=dict(title='Number of students', showgrid=True, zeroline=False),
+    )
+    html = kpis + to_div(fig)
+
+    classes = _views(sdf, show_classes)[1:]
+    if classes:
+        rates = [float((pd.to_numeric(sdf[sdf['Class'] == c]['Final'], errors='coerce') >= cut).mean())
+                 for c in classes]
+        ns = [int((sdf['Class'] == c).sum()) for c in classes]
+        cfig = go.Figure(go.Bar(
+            x=classes, y=rates, marker_color=[CLASS_COLORS.get(c, C['blue']) for c in classes],
+            text=[f'{r:.0%}' for r in rates], textposition='outside', cliponaxis=False,
+            textfont=dict(size=12, color=C['navy']), width=0.5,
+            hovertext=[f'{c}: {r:.0%} passing (n={n})' for c, r, n in zip(classes, rates, ns)],
+            hoverinfo='text', showlegend=False,
+        ))
+        cfig.update_layout(**LAYOUT, title=f'Passing Rate ({cut}+) by Class', height=300,
+            xaxis=dict(showgrid=False, zeroline=False),
+            yaxis=dict(tickformat='.0%', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
+                       showgrid=True, zeroline=False),
+        )
+        html += to_div(cfig)
+    return html + _leverage_html(sdf, conv, items, subject)
 
 
 # ── HTML helpers ──────────────────────────────────────────────────────────────
@@ -1208,7 +1549,7 @@ def takeaways_html(df, q, std_name, nq, show_classes=True):
 
 
 # ── Report assembly ───────────────────────────────────────────────────────────
-def build_html(df, q, crq_q, crq_col_names, std_name, nq, title,
+def build_html(df, q, written, subject, conv, std_name, nq, title,
                home_link='../../index.html', show_classes=True):
     today = date.today().strftime('%B %d, %Y')
 
@@ -1225,7 +1566,9 @@ def build_html(df, q, crq_q, crq_col_names, std_name, nq, title,
         'stimulus_type': fig_stimulus_type(df, q, nq),
     }
 
-    has_crq = bool(crq_col_names)
+    has_written = bool(written)
+    has_scale   = (conv is not None and 'Final' in df.columns
+                   and pd.to_numeric(df['Final'], errors='coerce').notna().any())
 
     def _opt(fig):
         return to_div(fig) if fig is not None else ''
@@ -1237,6 +1580,12 @@ def build_html(df, q, crq_q, crq_col_names, std_name, nq, title,
          'Bars are shaded by performance band; the dotted line marks the average.',
          kpi_html(df, nq) + to_div(figs['hist'])),
     ]
+
+    if has_scale:
+        blocks.append(('scale', 'Scale Score', 'Regents Scale Scores',
+            'Final scale scores from the conversion chart, which combines raw credits (multiple choice '
+            'and short answers) with the essay score. Shading shows performance Levels 1–5.',
+            scale_section_html(df, conv, written, subject, show_classes)))
 
     if show_classes:
         blocks.append(('class-period', 'Classes', 'Class & Period Performance',
@@ -1264,13 +1613,10 @@ def build_html(df, q, crq_q, crq_col_names, std_name, nq, title,
          distractor_html(df, q, nq)),
     ]
 
-    if has_crq:
-        blocks.append(('crq', 'Written', 'Written Response Questions',
-            'Short answer and essay questions; blanks count as 0 toward averages.',
-            crq_kpi_html(df, crq_col_names)
-            + to_div(fig_crq_bar(df, crq_q, crq_col_names))
-            + (to_div(fig_crq_class_bar(df, crq_col_names))
-               if show_classes and df['Class'].nunique() > 1 else '')))
+    if has_written:
+        blocks.append(('written', 'Written', 'Written Response',
+            written_subtitle(written),
+            written_section_html(df, written, show_classes)))
 
     blocks += [
         ('groups', 'Groups', 'Student Group Comparison',
@@ -1303,8 +1649,8 @@ def build_html(df, q, crq_q, crq_col_names, std_name, nq, title,
 
     n_classes = df['Class'].nunique()
     meta = [f'{len(df)} students', f'{nq} multiple-choice questions']
-    if has_crq:
-        meta.append(f'{len(crq_col_names)} written')
+    if has_written:
+        meta.append(f'{len(written)} written')
     if show_classes:
         meta.append(f'{n_classes} class{"es" if n_classes != 1 else ""}')
     meta_html = ''.join(f'<span>{m}</span>' for m in meta)
@@ -1450,6 +1796,7 @@ def build_html(df, q, crq_q, crq_col_names, std_name, nq, title,
 
     /* ── Callout ── */
     .callout {{ margin-top: 16px; background: #F4F7FE; border: 1px solid #DCE5FB; border-radius: 12px; padding: 14px 18px; }}
+    .callout-warn {{ background: #FEF7EC; border-color: #F7DDB0; margin: 16px 0 4px; }}
     .callout-title {{ font-weight: 700; color: var(--navy); margin-bottom: 6px; font-size: .92rem; }}
     .callout ul {{ margin: 0; padding-left: 18px; font-size: .92rem; }}
     .callout li + li {{ margin-top: 4px; }}
@@ -1470,6 +1817,19 @@ def build_html(df, q, crq_q, crq_col_names, std_name, nq, title,
     .tk-bar {{ grid-column: 1 / -1; height: 4px; border-radius: 4px; background: #EEF0F3; overflow: hidden; }}
     .tk-bar i {{ display: block; height: 100%; border-radius: 4px; }}
     .tk-panel li.tk-empty {{ display: block; color: var(--muted); font-style: italic; font-size: .88rem; }}
+
+    /* ── Sub-sections & projection table ── */
+    h3.sub-head {{
+      font-size: 1rem; font-weight: 700; color: var(--navy); margin: 26px 0 4px;
+      padding-top: 18px; border-top: 1px solid var(--line);
+    }}
+    h3.sub-head span {{ font-size: .82rem; font-weight: 500; color: var(--muted); margin-left: 8px; }}
+    .lev-table {{ width: 100%; border-collapse: collapse; font-size: .9rem; margin-top: 10px; min-width: 520px; }}
+    .lev-table th {{ text-align: left; font-size: .75rem; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .05em; padding: 8px 10px; border-bottom: 1px solid var(--line); }}
+    .lev-table td {{ padding: 10px; border-bottom: 1px solid var(--line); color: var(--navy); vertical-align: top; }}
+    .lev-table td span {{ display: block; font-size: .8rem; color: var(--muted); }}
+    .lev-table td:not(:first-child), .lev-table th:not(:first-child) {{ text-align: right; white-space: nowrap; }}
 
     footer {{ text-align: center; padding: 8px 24px 40px; font-size: .8rem; color: #98A2B3; }}
 
@@ -1550,12 +1910,17 @@ def run(config):
     show_classes = config.get('show_classes', True)
 
     print('Loading data...')
-    df, q, crq_q, crq_col_names, std_lookup, std_name, answer_cols, correct_cols, NQ = load_data(file)
-    n_crq = len(crq_col_names)
-    print(f'  {len(df)} students, {df["Class"].nunique()} classes, {NQ} MC + {n_crq} CRQ questions')
+    df, q, written, subject, std_lookup, std_name, answer_cols, correct_cols, NQ = \
+        load_data(file, config.get('subject'))
+    conv = load_conversion(file)
+    n_short = sum(1 for it in written if it['kind'] == 'short')
+    n_essay = len(written) - n_short
+    print(f'  {len(df)} students, {df["Class"].nunique()} classes, {NQ} MC, '
+          f'{n_short} short-answer + {n_essay} essay ({subject or "subject unknown"})'
+          + ('; conversion chart found' if conv else ''))
 
     print('Building report...')
-    html = build_html(df, q, crq_q, crq_col_names, std_name, NQ, title, home_link, show_classes)
+    html = build_html(df, q, written, subject, conv, std_name, NQ, title, home_link, show_classes)
 
     with open(output, 'w', encoding='utf-8') as f:
         f.write(html)
