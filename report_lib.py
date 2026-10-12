@@ -558,7 +558,7 @@ def distractor_html(df, q, nq):
     fig.update_layout(**LAYOUT, height=320,
         xaxis=dict(tickvals=[1, 2, 3, 4], ticktext=['Choice 1', 'Choice 2', 'Choice 3', 'Choice 4'],
                    title='', showgrid=False, zeroline=False, tickfont=dict(size=13)),
-        yaxis=dict(tickformat='.0%', title='% of Students', range=[0, 1.18],
+        yaxis=dict(tickformat='.0%', title='% of Students', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
     )
     fig.update_layout(margin=dict(l=0, r=20, t=5, b=20))
@@ -640,7 +640,7 @@ def fig_standards(df, q, std_name, nq):
         height=max(380, 40 * nq + 100),
         legend=dict(orientation='h', y=-0.14, x=0.5, xanchor='center', font=dict(size=11)),
         xaxis=dict(tickformat='.0%', title='% Who Answered Correctly',
-                   range=[0, 1.22], showgrid=True, gridcolor='#EEEEEE', zeroline=False),
+                   tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12], showgrid=True, gridcolor='#EEEEEE', zeroline=False),
         yaxis=dict(showgrid=False, tickfont=dict(size=13), ticksuffix='  '),
     )
     fig.update_layout(margin=dict(l=80, r=20, t=60, b=80))
@@ -835,7 +835,7 @@ def fig_oi(df, q, nq):
     fig.update_layout(**LAYOUT,
         title='Outside Information Required vs. Not', height=380,
         xaxis=dict(showgrid=False, zeroline=False),
-        yaxis=dict(tickformat='.0%', title='Average % Correct', range=[0, 1.3],
+        yaxis=dict(tickformat='.0%', title='Average % Correct', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
     )
     return fig
@@ -873,7 +873,7 @@ def fig_task_model(df, q, nq):
     fig.update_layout(**LAYOUT,
         title='Performance by Task Model', height=380,
         xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=13)),
-        yaxis=dict(tickformat='.0%', title='Average % Correct', range=[0, 1.25],
+        yaxis=dict(tickformat='.0%', title='Average % Correct', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
     )
     return fig
@@ -885,7 +885,7 @@ def fig_skill(df, q, nq):
         return None
 
     def skill_label(s):
-        m = _re.match(r'^([A-Z])\.', s.strip())
+        m = _re.match(r'^([A-Z](?:\.\d+)?)', s.strip())
         return m.group(1) if m else s[:2]
 
     skills = sorted(sks['Skill'].astype(str).str.strip().unique().tolist())
@@ -907,7 +907,7 @@ def fig_skill(df, q, nq):
     fig.update_layout(**LAYOUT,
         title='Performance by Skill', height=380,
         xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=13)),
-        yaxis=dict(tickformat='.0%', title='Average % Correct', range=[0, 1.25],
+        yaxis=dict(tickformat='.0%', title='Average % Correct', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
     )
     return fig
@@ -940,7 +940,7 @@ def fig_stimulus_type(df, q, nq):
     fig.update_layout(**LAYOUT,
         title='Performance by Stimulus Type', height=380,
         xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=13)),
-        yaxis=dict(tickformat='.0%', title='Average % Correct', range=[0, 1.25],
+        yaxis=dict(tickformat='.0%', title='Average % Correct', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
     )
     return fig
