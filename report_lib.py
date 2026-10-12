@@ -632,7 +632,7 @@ def fig_standards(df, q, std_name, nq):
         hoverinfo='text', cliponaxis=False, showlegend=False,
     ))
     add_color_legend(fig)
-    fig.add_vline(x=0.70, line_dash='dash', line_color=C['navy'], opacity=0.4,
+    fig.add_vline(x=0.70, line_dash='dot', line_color=C['navy'], opacity=0.4,
                   annotation_text='70% target', annotation_position='top right',
                   annotation_font=dict(size=10, color=C['navy']))
     fig.update_layout(**LAYOUT,
@@ -743,9 +743,9 @@ def scatter_html(df, q, std_name, nq, show_classes=True):
     for label, color in [('Hard (<50%)', C['red']), ('Medium (50–70%)', C['orange']), ('Easy (>70%)', C['teal'])]:
         fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
             marker=dict(color=color, size=10), name=label, showlegend=True))
-    fig.add_hline(y=0.20, line_dash='dash', line_color=C['red'], opacity=0.5,
+    fig.add_hline(y=0.20, line_dash='dot', line_color=C['red'], opacity=0.5,
                   annotation_text='PB = 0.20 (min)', annotation_font=dict(size=10, color=C['red']))
-    fig.add_hline(y=0.30, line_dash='dash', line_color=C['orange'], opacity=0.5,
+    fig.add_hline(y=0.30, line_dash='dot', line_color=C['orange'], opacity=0.5,
                   annotation_text='PB = 0.30', annotation_font=dict(size=10, color=C['orange']))
     fig.add_vline(x=0.50, line_dash='dot', line_color=C['gray'], opacity=0.35)
     fig.update_layout(**LAYOUT,
@@ -1287,7 +1287,7 @@ def build_html(df, q, crq_q, crq_col_names, std_name, nq, title,
         (_opt(figs['box']) if show_classes else '')
         + '<div class="divider"></div>'
         + scatter_html(df, q, std_name, nq, show_classes)
-        + '<p class="note">Questions above the dashed lines separate stronger and weaker students well; '
+        + '<p class="note">Questions above the dotted lines separate stronger and weaker students well; '
           'points near or below 0.20 may be worth reviewing for clarity.</p>'
         + '<div class="divider"></div>'
         + '<div class="chart-grid-2">'
