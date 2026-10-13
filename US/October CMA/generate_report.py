@@ -10,5 +10,6 @@ lib.run({
         'Bermejo':        lib.C['blue'],
         'Dushin':         lib.C['orange'],
         'Klein / Cooper': lib.C['purple'],
+        'Kovelsky':       lib.C['teal'],
     },
 })
