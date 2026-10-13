@@ -1285,7 +1285,14 @@ def written_section_html(df, items, show_classes=True):
         return ('<div class="callout"><div class="callout-title">No written scores yet</div>'
                 '<p class="muted" style="margin:0">The written-response questions are listed in the data '
                 'file, but no scores have been entered.</p></div>')
-    html = written_kpi_html(df, items)
+    pool = _written_pool(df, items)
+    html = ''
+    if len(pool) < len(df):
+        scored = sorted(pool['Class'].unique().tolist())
+        html += (f'<p class="note" style="margin-top:14px">Written scores are entered for <b>{len(pool)} of '
+                 f'{len(df)}</b> students' + (f' ({", ".join(scored)})' if len(scored) <= 3 else '')
+                 + ' — the results below cover only those students.</p>')
+    html += written_kpi_html(df, items)
     short = written_short_html(df, items, show_classes)
     essay = written_essay_html(df, items, show_classes)
     if short:
