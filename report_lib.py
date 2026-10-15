@@ -470,7 +470,7 @@ def fig_grade_bar(df, nq):
         mean_val = g_df['MC_Score'].mean()
         n = len(g_df)
         fig.add_trace(go.Bar(
-            x=[str(int(grade)) if float(grade).is_integer() else str(grade)],
+            x=[f'Grade {int(grade)}' if float(grade).is_integer() else f'Grade {grade}'],
             y=[mean_val],
             name=f'Grade {int(grade) if float(grade).is_integer() else grade}  (n={n})',
             marker_color=grade_palette[i % len(grade_palette)],
@@ -479,7 +479,7 @@ def fig_grade_bar(df, nq):
             width=0.45,
             hovertemplate=f'Grade {grade}: {mean_val:.1f}/{nq} avg  (n={n})<extra></extra>',
         ))
-    fig.update_xaxes(title_text='', showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     fig.update_yaxes(title_text=f'Avg Score (out of {nq})', range=[0, nq * 1.28],
                      showgrid=True, gridcolor='#EEEEEE', zeroline=False)
     fig.update_layout(**LAYOUT, title='Average Score by Grade', height=320,
