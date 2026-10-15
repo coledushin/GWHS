@@ -8,8 +8,9 @@ Config keys:
   title         – report title shown in the header and <title>
   output        – path to write the HTML output
   home_link     – href for the ← Home nav link (default: '../../index.html')
-  class_colors  – dict mapping class name → hex color (optional)
-                  defaults to Bermejo=blue, Sourial=blue, Dushin=orange, Kovelsky=teal
+  class_colors  – dict mapping class name → hex color (optional, merged over CLASS_COLORS)
+  show_classes  – include per-class charts (default True)
+  subject       – 'US' or 'Global' (default: inferred from content-standard codes)
 """
 
 import json
@@ -141,7 +142,7 @@ def _task_tag(text):
 
 
 def _written_items(df, written_raw, subject):
-    """Describe each written question: rubric type, max points, display group and label."""
+    """Rubric type, max points, display group and label for each written question."""
     items = []
     n_seq = sum(1 for _, part, *_ in written_raw if part == 'Part II')
     for wid, part, row, _ in written_raw:
@@ -232,7 +233,7 @@ def load_data(file, subject=None):
     questions  = pd.read_excel(file, sheet_name='Questions')
     std_sheet  = pd.read_excel(file, sheet_name='Content Standards')
 
-    # Written-response rows (Part II / III) — one entry per question id, in exam order
+    # Written-response questions (Part II / III), one per id
     non_mc_ids = set()
     q_id_col   = None
     written_rows = []
@@ -248,8 +249,7 @@ def load_data(file, subject=None):
                     seen.add(wid)
                     written_rows.append((wid, str(row['Part']).strip(), row))
 
-    # Match each written question to its Scores column: by Q# ('29', '34a'), or — when a part has a
-    # single question and no matching column — by the part's total column (e.g. a CMA's 'SEQ')
+    # Scores column by Q# ('29', '34a'); a lone question in a part may use the part total (e.g. 'SEQ')
     score_cols = {str(c).strip(): c for c in scores_raw.columns}
     part_sizes = defaultdict(int)
     for _, part, _ in written_rows:
@@ -262,8 +262,7 @@ def load_data(file, subject=None):
         if raw is not None:
             written_raw.append((wid, part, row, raw))
 
-    # MC columns: integer-named Scores columns NOT in any non-Part-I set
-    # (excludes Part II CRQs and Part III essay questions)
+    # MC columns: integer-named Scores columns outside Parts II/III
     mc_cols_raw = [c for c in scores_raw.columns
                    if str(c).strip().isdigit() and str(c).strip() not in non_mc_ids]
     NQ = len(mc_cols_raw)
@@ -288,35 +287,34 @@ def load_data(file, subject=None):
 
     q = questions.copy()
     q = q.rename(columns={
-        'CMA #':            'Q_Num',    # CMA sheets
-        '#':                'Q_Num',    # Final/Regents sheets
+        'CMA #':            'Q_Num',
+        '#':                'Q_Num',
         'Source #':         'Source_Num',
         'Stimulus Type':    'Stimulus_Type',
-        'Stimulus_type':    'Stimulus_Type',   # underscore variant
+        'Stimulus_type':    'Stimulus_Type',
         'Source Type':      'Source_Type',
-        'Source_type':      'Source_Type',     # underscore variant
+        'Source_type':      'Source_Type',
         'Task Model':       'Task_Model',
-        'Task_model':       'Task_Model',      # underscore variant
+        'Task_model':       'Task_Model',
         'Content':          'Content_Std',
-        'Content_standard': 'Content_Std',    # underscore variant
+        'Content_standard': 'Content_Std',
         'Need OI?':         'Need_OI',
-        'Need_OI?':         'Need_OI',         # underscore variant
-        'Skill_standard':   'Skill',           # Regents variant
-        'Key':              'Answer',          # Regents variant
+        'Need_OI?':         'Need_OI',
+        'Skill_standard':   'Skill',
+        'Key':              'Answer',
         'Option 1': 'Opt1', 'Option 2': 'Opt2',
         'Option 3': 'Opt3', 'Option 4': 'Opt4',
-        'Option_1': 'Opt1', 'Option_2': 'Opt2',  # underscore variants
+        'Option_1': 'Opt1', 'Option_2': 'Opt2',
         'Option_3': 'Opt3', 'Option_4': 'Opt4',
     })
     q['Q_Num'] = pd.to_numeric(q['Q_Num'], errors='coerce')
-    # Content standard may be a bare code ('11.01c.2') or concatenated ('11.01c.2: Colonial …')
+    # Accept bare ('11.01c.2') or concatenated ('11.01c.2: Colonial …') codes
     if 'Content_Std' in q.columns:
         q['Content_Std'] = q['Content_Std'].map(_std_code)
-    # Only keep MC questions (NQ filter naturally excludes CRQ rows)
     q = q[q['Q_Num'].isin(range(1, NQ + 1))].sort_values('Q_Num').reset_index(drop=True)
     q['Q_Num'] = q['Q_Num'].astype(int)
 
-    # Derive Full_Answer from answer number + option columns (drops need for that Excel column)
+    # Full_Answer = text of the keyed option
     if 'Full Answer' in q.columns:
         q = q.drop(columns=['Full Answer'])
     def _full_ans(r):
@@ -346,12 +344,10 @@ def load_data(file, subject=None):
     if 'Class' in df_renamed.columns and df_renamed['Class'].notna().any():
         df = df_renamed.dropna(subset=['Class']).copy()
     else:
-        # No class data — keep all rows, group everyone as one cohort
         df = df_renamed.copy()
         df['Class'] = 'All Students'
-    # Drop rows where every MC answer is blank (catches empty trailing rows)
+    # Drop rows with no MC answers (empty or summary rows)
     df = df.dropna(subset=answer_cols, how='all')
-    # Default Period to 1 if missing — enables class bar chart
     if 'Period' not in df.columns or df['Period'].isna().all():
         df['Period'] = 1
     for i in range(1, NQ + 1):
@@ -457,8 +453,7 @@ def fig_class_bar(df, nq):
 
 
 def fig_grade_bar(df, nq):
-    """Average score by grade. Returns None if Grade column missing or only one grade.
-    Only uses values in the range 6–13 (K-12 grade levels)."""
+    """Average score by grade (6–13); None if fewer than two grades."""
     if 'Grade' not in df.columns:
         return None
     valid = df['Grade'].dropna()
@@ -530,7 +525,7 @@ def difficulty_html(df, q, std_name, nq, show_classes=True):
     std_labels    = [std_name(q['Content_Std'].tolist()[order[j]], 35) for j in range(nq)]
 
     row_names = ['Overall'] + (sorted(df['Class'].unique().tolist()) if show_classes else [])
-    ns        = []   # sample size per row, reused for both sort orders
+    ns        = []
     z_data, text_data, hover_data = [], [], []
     for row_name in row_names:
         fdf   = df if row_name == 'Overall' else df[df['Class'] == row_name]
@@ -550,7 +545,6 @@ def difficulty_html(df, q, std_name, nq, show_classes=True):
     all_vals = [v for row in z_data for v in row]
     zmin_val, zmax_val = min(all_vals), max(all_vals)
 
-    # Natural order — precompute answers in Q1…Qn order
     nat_answers = [str(q['Full_Answer'].tolist()[j]).strip() for j in range(nq)]
     nat_stds    = [std_name(q['Content_Std'].tolist()[j], 35) for j in range(nq)]
     nat_qs      = [str(q['Question'].tolist()[j]).strip() for j in range(nq)]
@@ -568,7 +562,7 @@ def difficulty_html(df, q, std_name, nq, show_classes=True):
             for j in range(nq)
         ])
 
-    # When no class breakdown, suppress the "Overall" y-axis label (only one row)
+    # Single-row heatmap: hide the "Overall" label
     y_labels = row_names if show_classes else [''] * len(row_names)
 
     show_text = nq <= 20
@@ -812,6 +806,96 @@ def fig_boxplot(df, nq):
     return fig
 
 
+PB_BANDS = [   # (minimum PB, label, color, what it means)
+    (0.30, 'Strong',     C['green'],  'Cleanly separates students who know the material from those who don\'t.'),
+    (0.20, 'Acceptable', C['teal'],   'Does its job; no action needed.'),
+    (0.10, 'Weak',       C['orange'], 'Only loosely tied to overall performance — check the wording and distractors.'),
+    (-1.0, 'Poor',       C['red'],    'Almost no relationship, or negative. Check the answer key first.'),
+]
+
+
+def _pb_band(v):
+    return next((lbl, col) for lo, lbl, col, _ in PB_BANDS if v >= lo)
+
+
+def _item_pb(fdf, i):
+    """Point-biserial of question i against the rest-of-test MC score; None when undefined."""
+    x, rest = fdf[f'Q{i}'], fdf['MC_Score'] - fdf[f'Q{i}']
+    if len(fdf) < 3 or x.nunique() < 2 or rest.nunique() < 2:
+        return None
+    return float(stats.pointbiserialr(x, rest)[0])
+
+
+def pb_guide_html(n):
+    bands = ''.join(
+        f'<li><span class="pb-chip" style="background:{col}">{lbl}</span>'
+        f'<span class="pb-range">{"below 0.10" if lo < 0 else f"{lo:.2f}+" if lo >= 0.30 else f"{lo:.2f}–{up - 0.01:.2f}"}</span>'
+        f'<span class="pb-mean">{mean}</span></li>'
+        for (lo, lbl, col, mean), up in zip(PB_BANDS, [None, 0.30, 0.20, 0.10]))
+    small = (f'<p class="note"><b>Small sample:</b> with {n} students, one PB can shift by 0.1 or more '
+             f'from a handful of answers. Treat it as a prompt to look closer, not a verdict.</p>'
+             if n < 60 else '')
+    return f'''<div class="pb-guide">
+  <div class="pb-text">
+    <div class="callout-title">How to read point-biserial (PB)</div>
+    <p>A question is only useful if it tells students apart. <b>PB measures that</b>: it is the correlation
+    between getting this question right and scoring well on <i>the rest</i> of the multiple-choice questions
+    (the question itself is left out, so it can\'t inflate its own score). It runs from −1 to +1.</p>
+    <ul>
+      <li><b>High PB</b> — students who did well elsewhere got it right; students who struggled missed it.</li>
+      <li><b>Near zero</b> — right and wrong answers are scattered. The question isn\'t revealing who understands.</li>
+      <li><b>Negative</b> — stronger students missed it more than weaker ones. Usually a wrong answer key or a
+      distractor that sounds more right than the answer.</li>
+    </ul>
+  </div>
+  <div class="pb-side">
+    <ul class="pb-bands">{bands}</ul>
+  </div>
+</div>
+<div class="pb-quad">
+  <div><b>Top right · easy &amp; discriminating</b>Healthy. Most students get it, and the few who miss it are the ones struggling.</div>
+  <div><b>Top left · hard &amp; discriminating</b>Where your strongest students pull ahead. Good questions, so a low % correct here isn\'t a flaw.</div>
+  <div><b>Bottom right · easy &amp; flat</b>Expected. When nearly everyone gets it right there is little room to separate students.</div>
+  <div><b>Bottom left · hard &amp; flat</b>Review first. Students may be guessing, or the wording or a distractor is misleading.</div>
+</div>
+{small}'''
+
+
+def pb_flags_html(df, q, std_name, nq):
+    """Questions whose overall PB falls below 0.20, with a suggested reading for each."""
+    rows, n_strong = [], 0
+    for i in range(1, nq + 1):
+        pv, pb = float(df[f'Q{i}'].mean()), _item_pb(df, i)
+        topic = std_name(q.loc[q['Q_Num'] == i, 'Content_Std'].values[0], 50)
+        if pb is None:
+            reading = 'Everyone answered alike, so PB can\'t be calculated.'
+            tag = f'{pv:.0%} correct'
+        elif pb >= 0.30:
+            n_strong += 1
+            continue
+        elif pb >= 0.20:
+            continue
+        else:
+            if pb < 0:
+                reading = 'Stronger students missed this more often. Check the answer key and the most-chosen wrong answer.'
+            elif pv >= 0.85:
+                reading = 'Nearly everyone got it right, so a low PB is expected. Probably fine.'
+            elif pv < 0.50:
+                reading = 'Hard and not discriminating. Students may be guessing; review the wording and distractors.'
+            else:
+                reading = 'Only loosely tied to overall performance. Review the wording and distractors.'
+            tag = f'PB {pb:.2f} · {pv:.0%} correct'
+        rows.append(f'<li><b>Q{i}</b>{" · " + topic if topic else ""} <span class="pill">{tag}</span>'
+                    f'<span class="pb-reading">{reading}</span></li>')
+    head = f'{n_strong} of {nq} questions have a PB of 0.30 or higher.'
+    if not rows:
+        return (f'<div class="callout"><div class="callout-title">Questions to review</div>'
+                f'<p style="margin:0">{head} None fall below 0.20 on the overall view.</p></div>')
+    return (f'<div class="callout"><div class="callout-title">Questions to review</div>'
+            f'<p style="margin:0 0 6px">{head} These fall below 0.20 on the overall view:</p>'
+            f'<ul class="pb-flags">{"".join(rows)}</ul></div>')
+
+
 def scatter_html(df, q, std_name, nq, show_classes=True):
     """Difficulty vs. discrimination scatter with Overall / per-class toggle."""
     topics  = [std_name(q.loc[q['Q_Num'] == i, 'Content_Std'].values[0], 60) for i in range(1, nq + 1)]
@@ -819,17 +903,14 @@ def scatter_html(df, q, std_name, nq, show_classes=True):
 
     def compute(fdf):
         p  = [float(fdf[f'Q{i}'].mean()) for i in range(1, nq + 1)]
-        pb = []
-        for i in range(1, nq + 1):
-            try:
-                v = stats.pointbiserialr(fdf[f'Q{i}'], fdf['MC_Score'] - fdf[f'Q{i}'])[0]
-                pb.append(float(v) if not np.isnan(v) else 0.0)
-            except Exception:
-                pb.append(0.0)
+        raw    = [_item_pb(fdf, i) for i in range(1, nq + 1)]
+        pb     = [0.0 if v is None else v for v in raw]
         colors = [pct_color(v) for v in p]
         hover  = [
             f'<b>{i}: {topics[i-1]}</b><br>{q_texts[i-1]}…<br><br>'
-            f'Difficulty: {p[i-1]:.0%}<br>Point-biserial: {pb[i-1]:.2f}'
+            f'Difficulty: {p[i-1]:.0%} correct<br>'
+            + (f'Point-biserial: {pb[i-1]:.2f} ({_pb_band(pb[i-1])[0].lower()})'
+               if raw[i-1] is not None else 'Point-biserial: n/a (everyone answered alike)')
             for i in range(1, nq + 1)
         ]
         return p, pb, colors, hover
@@ -841,8 +922,12 @@ def scatter_html(df, q, std_name, nq, show_classes=True):
         all_data[view] = compute(fdf)
 
     p0, pb0, c0, h0 = all_data['Overall']
+    all_pb = [v for d in all_data.values() for v in d[1]]
+    y_lo   = min(-0.1, min(all_pb) - 0.05)
+    y_hi   = max(0.6, max(all_pb) + 0.12)
 
     fig = go.Figure()
+    fig.add_hrect(y0=y_lo, y1=0.20, fillcolor=C['red'], opacity=0.05, line_width=0, layer='below')
     fig.add_trace(go.Scatter(
         x=p0, y=pb0, mode='markers+text',
         text=[f'{i}' for i in range(1, nq + 1)], textposition='top right',
@@ -853,18 +938,26 @@ def scatter_html(df, q, std_name, nq, show_classes=True):
     for label, color in [('Hard (<50%)', C['red']), ('Medium (50–70%)', C['orange']), ('Easy (>70%)', C['teal'])]:
         fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
             marker=dict(color=color, size=10), name=label, showlegend=True))
-    fig.add_hline(y=0.20, line_dash='dot', line_color=C['red'], opacity=0.5,
-                  annotation_text='PB = 0.20 (min)', annotation_font=dict(size=10, color=C['red']))
-    fig.add_hline(y=0.30, line_dash='dot', line_color=C['orange'], opacity=0.5,
-                  annotation_text='PB = 0.30', annotation_font=dict(size=10, color=C['orange']))
+    fig.add_hline(y=0.20, line_dash='dot', line_color=C['red'], opacity=0.6,
+                  annotation_text='0.20 · below this, review', annotation_position='bottom right',
+                  annotation_font=dict(size=10, color=C['red']))
+    fig.add_hline(y=0.30, line_dash='dot', line_color=C['green'], opacity=0.6,
+                  annotation_text='0.30 · strong', annotation_position='top right',
+                  annotation_font=dict(size=10, color=C['green']))
     fig.add_vline(x=0.50, line_dash='dot', line_color=C['gray'], opacity=0.35)
+    for x, y, xa, ya, txt in [(0.01, 0.99, 'left', 'top', 'Hard · discriminating'),
+                              (0.99, 0.99, 'right', 'top', 'Easy · discriminating'),
+                              (0.01, 0.01, 'left', 'bottom', 'Hard · flat — review first'),
+                              (0.99, 0.01, 'right', 'bottom', 'Easy · flat — expected')]:
+        fig.add_annotation(xref='paper', yref='paper', x=x, y=y, xanchor=xa, yanchor=ya, text=txt,
+                           showarrow=False, font=dict(size=10, color=C['gray']))
     fig.update_layout(**LAYOUT,
         title='Difficulty vs. Discrimination', height=460,
         legend=dict(orientation='h', y=-0.16, x=0.5, xanchor='center', font=dict(size=11)),
         xaxis=dict(tickformat='.0%', title='Difficulty (% correct)',
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False, range=[0, 1.05]),
-        yaxis=dict(title='Point-biserial',
-                   showgrid=True, gridcolor='#EEEEEE', zeroline=False),
+        yaxis=dict(title='Point-biserial (higher = separates students better)',
+                   showgrid=True, gridcolor='#EEEEEE', zeroline=False, range=[y_lo, y_hi]),
     )
 
     chart_div = to_div(fig)
@@ -872,7 +965,6 @@ def scatter_html(df, q, std_name, nq, show_classes=True):
     fig_id = m.group(1) if m else 'plotly-scatter'
     ctr_id = 'sc-' + fig_id[-8:]
 
-    # Precompute restyle configs for each view (trace 0 only)
     configs_js = json.dumps({
         view: {
             'x':            [all_data[view][0]],
@@ -1089,7 +1181,7 @@ def _essay_status_color(avg):
 
 
 def _written_pool(df, items):
-    """Students with at least one written score entered (others weren't scored / were absent)."""
+    """Students with at least one written score entered."""
     cols = [it['col'] for it in items if it['entered']]
     return df[df[cols].notna().any(axis=1)] if cols else df.iloc[0:0]
 
@@ -1639,9 +1731,11 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
     sections.append(section('Appendix', 'appendix',
         (_opt(figs['box']) if show_classes else '')
         + '<div class="divider"></div>'
+        + '<h3 class="sub-head" style="border-top:0;padding-top:0;margin-top:6px">Question quality '
+          '<span>difficulty vs. point-biserial</span></h3>'
+        + pb_guide_html(len(df))
         + scatter_html(df, q, std_name, nq, show_classes)
-        + '<p class="note">Questions above the dotted lines separate stronger and weaker students well; '
-          'points near or below 0.20 may be worth reviewing for clarity.</p>'
+        + pb_flags_html(df, q, std_name, nq)
         + '<div class="divider"></div>'
         + '<div class="chart-grid-2">'
         + _opt(figs['oi'])
@@ -1807,6 +1901,23 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
     .callout-title {{ font-weight: 700; color: var(--navy); margin-bottom: 6px; font-size: .92rem; }}
     .callout ul {{ margin: 0; padding-left: 18px; font-size: .92rem; }}
     .callout li + li {{ margin-top: 4px; }}
+    .pb-guide {{ display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; margin: 10px 0 14px;
+      background: #F4F7FE; border: 1px solid #DCE5FB; border-radius: 12px; padding: 16px 20px; }}
+    .pb-guide p {{ margin: 6px 0 8px; font-size: .92rem; }}
+    .pb-guide ul {{ margin: 0; padding-left: 18px; font-size: .9rem; }}
+    .pb-guide li + li {{ margin-top: 4px; }}
+    .pb-bands {{ list-style: none; padding: 0 !important; display: flex; flex-direction: column; gap: 8px; }}
+    .pb-bands li {{ display: grid; grid-template-columns: 86px 1fr; gap: 2px 10px; align-items: center; margin: 0 !important; }}
+    .pb-chip {{ color: white; font-size: .75rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; text-align: center; }}
+    .pb-range {{ font-weight: 700; font-size: .85rem; color: var(--navy); }}
+    .pb-mean {{ grid-column: 2; font-size: .8rem; color: var(--muted); line-height: 1.35; }}
+    .pb-quad {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 8px; }}
+    .pb-quad div {{ font-size: .82rem; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }}
+    .pb-quad b {{ display: block; color: var(--navy); font-size: .8rem; margin-bottom: 2px; }}
+    .pb-flags {{ margin: 0; padding-left: 18px; font-size: .9rem; }}
+    .pb-flags li + li {{ margin-top: 8px; }}
+    .pb-reading {{ display: block; font-size: .82rem; color: var(--muted); }}
+    @media (max-width: 720px) {{ .pb-guide {{ grid-template-columns: 1fr; }} }}
     .pill {{ display: inline-block; font-size: .75rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: white; border: 1px solid #DCE5FB; margin-left: 4px; }}
 
     /* ── Takeaways ── */
@@ -1896,19 +2007,10 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 def run(config):
-    """
-    Generate a report from a config dict. Example:
-
-        lib.run({
-            'file':         './US/May Final/US May Final Data.xlsx',
-            'title':        'US History Final — May 2026',
-            'output':       './US/May Final/us_may_final_report.html',
-            'class_colors': {'Bermejo': '#3A86FF', 'Dushin': '#F4A261', 'Kovelsky': '#44BBA4'},
-        })
-    """
+    """Generate a report from a config dict (keys listed in the module docstring)."""
     global CLASS_COLORS
     if 'class_colors' in config:
-        CLASS_COLORS = {**CLASS_COLORS, **config['class_colors']}  # merge, not replace
+        CLASS_COLORS = {**CLASS_COLORS, **config['class_colors']}
 
     file         = config['file']
     title        = config['title']
