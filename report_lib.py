@@ -808,7 +808,7 @@ def fig_boxplot(df, nq):
 
 PB_BANDS = [   # (minimum PB, label, color, what to do)
     (0.30, 'Strong',     C['green'],  'separates students well'),
-    (0.20, 'Acceptable', C['teal'],   'fine as is'),
+    (0.20, 'Acceptable', C['blue'],   'fine as is'),
     (0.10, 'Weak',       C['orange'], 'check wording and distractors'),
     (-1.0, 'Poor',       C['red'],    'check the answer key'),
 ]
@@ -889,7 +889,7 @@ def scatter_html(df, q, std_name, nq, show_classes=True):
         p  = [float(fdf[f'Q{i}'].mean()) for i in range(1, nq + 1)]
         raw    = [_item_pb(fdf, i) for i in range(1, nq + 1)]
         pb     = [0.0 if v is None else v for v in raw]
-        colors = [pct_color(v) for v in p]
+        colors = [C['gray'] if r is None else _pb_band(r)[1] for r in raw]
         hover  = [
             f'<b>{i}: {topics[i-1]}</b><br>{q_texts[i-1]}…<br><br>'
             f'Difficulty: {p[i-1]:.0%} correct<br>'
@@ -919,9 +919,9 @@ def scatter_html(df, q, std_name, nq, show_classes=True):
         marker=dict(color=c0, size=14, line=dict(color='white', width=1.5)),
         hovertext=h0, hoverinfo='text', showlegend=False,
     ))
-    for label, color in [('Hard (<50%)', C['red']), ('Medium (50–70%)', C['orange']), ('Easy (>70%)', C['teal'])]:
+    for (_, label, color, _), rng in zip(PB_BANDS, ['0.30+', '0.20–0.29', '0.10–0.19', 'below 0.10']):
         fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
-            marker=dict(color=color, size=10), name=label, showlegend=True))
+            marker=dict(color=color, size=10), name=f'{label} ({rng})', showlegend=True))
     fig.add_hline(y=0.20, line_dash='dot', line_color=C['red'], opacity=0.6,
                   annotation_text='0.20 · below this, review', annotation_position='bottom right',
                   annotation_font=dict(size=10, color=C['red']))
