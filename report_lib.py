@@ -1225,7 +1225,7 @@ def written_kpi_html(df, items):
             n   = len(g_items)
             avg = credits.mean()
             tiles.append(_kpi(f'{avg:.1f}<small> / {n}</small>', g, pct_color(avg / n),
-                              f'{avg / n:.0%} of credits earned · 1 credit each'))
+                              f'{avg / n:.0%} of credits earned'))
         else:
             scores = pd.concat([pool[it['col']].fillna(0) for it in g_items])
             avg    = scores.mean()
@@ -1359,8 +1359,7 @@ def written_section_html(df, items, show_classes=True):
     entered = [it for it in items if it['entered']]
     if not entered:
         return ('<div class="callout"><div class="callout-title">No written scores yet</div>'
-                '<p class="muted" style="margin:0">The written-response questions are listed in the data '
-                'file, but no scores have been entered.</p></div>')
+                '<p class="muted" style="margin:0">No scores have been entered yet.</p></div>')
     pool = _written_pool(df, items)
     html = ''
     if len(pool) < len(df):
@@ -1372,30 +1371,13 @@ def written_section_html(df, items, show_classes=True):
     short = written_short_html(df, items, show_classes)
     essay = written_essay_html(df, items, show_classes)
     if short:
-        html += '<h3 class="sub-head">Short answers <span>1 credit each</span></h3>' + short
+        html += '<h3 class="sub-head">Short answers</h3>' + short
     if essay:
-        html += ('<h3 class="sub-head">Essays <span>scored 0–5 on the NYSED rubric · '
-                 'half points are the average of two raters</span></h3>' + essay)
+        html += '<h3 class="sub-head">Essays</h3>' + essay
     missing = [it['label'] for it in items if not it['entered']]
     if missing:
         html += f'<p class="note">No scores entered yet for: {", ".join(missing)}.</p>'
     return html
-
-
-def written_subtitle(items):
-    parts = []
-    for g in dict.fromkeys(it['group'] for it in items):
-        g_items = [it for it in items if it['group'] == g]
-        it = g_items[0]
-        if it['kind'] == 'short':
-            parts.append(f"{g} ({it['part']}) are worth 1 credit each")
-        elif len(g_items) > 1:
-            parts.append(f"the {g} ({it['part']}) are each scored 0–5 on a rubric")
-        else:
-            parts.append(f"the {g} ({it['part']}) is scored 0–5 on a rubric")
-    text = '; '.join(parts)
-    return (text[0].upper() + text[1:] + '. Blank answers count as 0; students with no written '
-            'scores at all are left out of this section.')
 
 
 # ── Regents scale score ───────────────────────────────────────────────────────
@@ -1442,8 +1424,7 @@ def _leverage_html(sdf, conv, items, subject):
             f'conversion chart</span></h3>'
             f'<div class="scroll-x"><table class="lev-table"><thead><tr><th>If…</th><th>Passing ({cut}+)</th>'
             f'<th>Newly passing</th><th>Avg scale gain</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
-            f'<p class="note">The essay is the column of the conversion chart, so each rubric level is worth '
-            f'several scale points; each raw credit is worth about two or three.</p>')
+            f'<p class="note">One rubric level is worth several scale points; one raw credit only two or three.</p>')
 
 
 def scale_section_html(df, conv, items, subject, show_classes=True):
@@ -1659,20 +1640,18 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
     # (anchor, nav label, section title, subtitle, content) — numbered in order below
     blocks = [
         ('overview', 'Overview', 'At a Glance',
-         'Multiple-choice results for every student who took the exam. '
          'Bars are shaded by performance band; the dotted line marks the average.',
          kpi_html(df, nq) + to_div(figs['hist'])),
     ]
 
     if has_scale:
         blocks.append(('scale', 'Scale Score', 'Regents Scale Scores',
-            'Final scale scores from the conversion chart, which combines raw credits (multiple choice '
-            'and short answers) with the essay score. Shading shows performance Levels 1–5.',
+            'Shading shows performance Levels 1–5; the dotted line marks passing.',
             scale_section_html(df, conv, written, subject, show_classes)))
 
     if show_classes:
         blocks.append(('class-period', 'Classes', 'Class & Period Performance',
-            'Average score for each period, and how scores spread out within each class.',
+            '',
             (
                 '<div class="chart-grid">'
                 + to_div(figs['cp_bar']) + to_div(figs['cp_grade'])
@@ -1686,28 +1665,27 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
 
     blocks += [
         ('difficulty', 'Difficulty', 'Which Questions Were Hardest?',
-         'Percent of students who answered each question correctly. '
-         'Hover a cell to see the question, its standard, and the correct answer.',
+         'Hover a cell for the question, its standard, and the correct answer.',
          f'<div class="scroll-x"><div style="min-width:{max(520, nq * 34)}px">'
          + difficulty_html(df, q, std_name, nq, show_classes) + '</div></div>'),
 
         ('distractor', 'Answer Choices', 'What Did Students Select?',
-         'How students split across the four choices on each question. Pick a question number to switch.',
+         '',
          distractor_html(df, q, nq)),
     ]
 
     if has_written:
         blocks.append(('written', 'Written', 'Written Response',
-            written_subtitle(written),
+            '',
             written_section_html(df, written, show_classes)))
 
     blocks += [
         ('groups', 'Groups', 'Student Group Comparison',
-         'Average score for general education, ELL, and IEP students, compared with the overall average.',
+         '',
          to_div(figs['grp']) + subgroup_notes_html(df)),
 
         ('takeaways', 'Takeaways', 'Key Takeaways',
-         'Content standards sorted by how many students answered their questions correctly, to guide reteaching.',
+         '',
          takeaways_html(df, q, std_name, nq, show_classes)),
     ]
 
@@ -1727,7 +1705,7 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
         + _opt(figs['task_model'])
         + _opt(figs['skill'])
         + '</div>',
-        subtitle='Item statistics and results broken down by question type.', num='+'))
+        num='+'))
 
     nav_links = ''.join(f'<a href="#{a}">{lbl}</a>' for a, lbl, *_ in blocks) \
         + '<a href="#appendix">Appendix</a>'
