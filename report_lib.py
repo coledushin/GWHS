@@ -241,7 +241,7 @@ def load_data(file, subject=None):
         q_id_col = '#' if '#' in questions.columns else ('CMA #' if 'CMA #' in questions.columns else None)
         if q_id_col:
             parts      = questions['Part'].astype(str).str.strip()
-            non_mc_ids = set(questions[parts != 'Part I'][q_id_col].astype(str).str.strip().tolist())
+            non_mc_ids = set(questions[parts.isin(WRITTEN_PARTS)][q_id_col].astype(str).str.strip().tolist())
             seen = set()
             for _, row in questions[parts.isin(WRITTEN_PARTS)].iterrows():
                 wid = str(row[q_id_col]).strip()
@@ -806,11 +806,11 @@ def fig_boxplot(df, nq):
     return fig
 
 
-PB_BANDS = [   # (minimum PB, label, color, what it means)
-    (0.30, 'Strong',     C['green'],  'Cleanly separates students who know the material from those who don\'t.'),
-    (0.20, 'Acceptable', C['teal'],   'Does its job; no action needed.'),
-    (0.10, 'Weak',       C['orange'], 'Only loosely tied to overall performance — check the wording and distractors.'),
-    (-1.0, 'Poor',       C['red'],    'Almost no relationship, or negative. Check the answer key first.'),
+PB_BANDS = [   # (minimum PB, label, color, what to do)
+    (0.30, 'Strong',     C['green'],  'separates students well'),
+    (0.20, 'Acceptable', C['teal'],   'fine as is'),
+    (0.10, 'Weak',       C['orange'], 'check wording and distractors'),
+    (-1.0, 'Poor',       C['red'],    'check the answer key'),
 ]
 
 
@@ -827,38 +827,22 @@ def _item_pb(fdf, i):
 
 
 def pb_guide_html(n):
+    ranges = ['0.30+', '0.20–0.29', '0.10–0.19', 'below 0.10']
     bands = ''.join(
         f'<li><span class="pb-chip" style="background:{col}">{lbl}</span>'
-        f'<span class="pb-range">{"below 0.10" if lo < 0 else f"{lo:.2f}+" if lo >= 0.30 else f"{lo:.2f}–{up - 0.01:.2f}"}</span>'
-        f'<span class="pb-mean">{mean}</span></li>'
-        for (lo, lbl, col, mean), up in zip(PB_BANDS, [None, 0.30, 0.20, 0.10]))
-    small = (f'<p class="note"><b>Small sample:</b> with {n} students, one PB can shift by 0.1 or more '
-             f'from a handful of answers. Treat it as a prompt to look closer, not a verdict.</p>'
+        f'<span class="pb-range">{rng}</span><span class="pb-mean">{mean}</span></li>'
+        for (_, lbl, col, mean), rng in zip(PB_BANDS, ranges))
+    small = (f' With only {n} students, one PB can shift by 0.1 or more, so treat it as a prompt to look closer.'
              if n < 60 else '')
     return f'''<div class="pb-guide">
   <div class="pb-text">
     <div class="callout-title">How to read point-biserial (PB)</div>
-    <p>A question is only useful if it tells students apart. <b>PB measures that</b>: it is the correlation
-    between getting this question right and scoring well on <i>the rest</i> of the multiple-choice questions
-    (the question itself is left out, so it can\'t inflate its own score). It runs from −1 to +1.</p>
-    <ul>
-      <li><b>High PB</b> — students who did well elsewhere got it right; students who struggled missed it.</li>
-      <li><b>Near zero</b> — right and wrong answers are scattered. The question isn\'t revealing who understands.</li>
-      <li><b>Negative</b> — stronger students missed it more than weaker ones. Usually a wrong answer key or a
-      distractor that sounds more right than the answer.</li>
-    </ul>
+    <p>PB shows whether a question separates strong students from struggling ones: the correlation between
+    getting it right and scoring well on the rest of the test. Higher is better, and a negative value usually
+    means a wrong answer key or a misleading distractor.{small}</p>
   </div>
-  <div class="pb-side">
-    <ul class="pb-bands">{bands}</ul>
-  </div>
-</div>
-<div class="pb-quad">
-  <div><b>Top right · easy &amp; discriminating</b>Healthy. Most students get it, and the few who miss it are the ones struggling.</div>
-  <div><b>Top left · hard &amp; discriminating</b>Where your strongest students pull ahead. Good questions, so a low % correct here isn\'t a flaw.</div>
-  <div><b>Bottom right · easy &amp; flat</b>Expected. When nearly everyone gets it right there is little room to separate students.</div>
-  <div><b>Bottom left · hard &amp; flat</b>Review first. Students may be guessing, or the wording or a distractor is misleading.</div>
-</div>
-{small}'''
+  <ul class="pb-bands">{bands}</ul>
+</div>'''
 
 
 def pb_flags_html(df, q, std_name, nq):
@@ -1901,19 +1885,14 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
     .callout-title {{ font-weight: 700; color: var(--navy); margin-bottom: 6px; font-size: .92rem; }}
     .callout ul {{ margin: 0; padding-left: 18px; font-size: .92rem; }}
     .callout li + li {{ margin-top: 4px; }}
-    .pb-guide {{ display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; margin: 10px 0 14px;
-      background: #F4F7FE; border: 1px solid #DCE5FB; border-radius: 12px; padding: 16px 20px; }}
-    .pb-guide p {{ margin: 6px 0 8px; font-size: .92rem; }}
-    .pb-guide ul {{ margin: 0; padding-left: 18px; font-size: .9rem; }}
-    .pb-guide li + li {{ margin-top: 4px; }}
-    .pb-bands {{ list-style: none; padding: 0 !important; display: flex; flex-direction: column; gap: 8px; }}
-    .pb-bands li {{ display: grid; grid-template-columns: 86px 1fr; gap: 2px 10px; align-items: center; margin: 0 !important; }}
-    .pb-chip {{ color: white; font-size: .75rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; text-align: center; }}
-    .pb-range {{ font-weight: 700; font-size: .85rem; color: var(--navy); }}
-    .pb-mean {{ grid-column: 2; font-size: .8rem; color: var(--muted); line-height: 1.35; }}
-    .pb-quad {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 8px; }}
-    .pb-quad div {{ font-size: .82rem; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }}
-    .pb-quad b {{ display: block; color: var(--navy); font-size: .8rem; margin-bottom: 2px; }}
+    .pb-guide {{ display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: center; margin: 10px 0 14px;
+      background: #F4F7FE; border: 1px solid #DCE5FB; border-radius: 12px; padding: 14px 20px; }}
+    .pb-guide p {{ margin: 4px 0 0; font-size: .9rem; }}
+    .pb-bands {{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }}
+    .pb-bands li {{ display: grid; grid-template-columns: 84px 76px 1fr; gap: 8px; align-items: center; font-size: .82rem; }}
+    .pb-chip {{ color: white; font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; text-align: center; }}
+    .pb-range {{ font-weight: 700; color: var(--navy); }}
+    .pb-mean {{ color: var(--muted); }}
     .pb-flags {{ margin: 0; padding-left: 18px; font-size: .9rem; }}
     .pb-flags li + li {{ margin-top: 8px; }}
     .pb-reading {{ display: block; font-size: .82rem; color: var(--muted); }}
