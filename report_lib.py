@@ -1691,20 +1691,19 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
 
     sections = [section(t, a, c, subtitle=s, num=i + 1) for i, (a, _, t, s, c) in enumerate(blocks)]
     sections.append(section('Appendix', 'appendix',
-        (_opt(figs['box']) if show_classes else '')
+        '<div class="chart-grid-2">'
+        + _opt(figs['oi'])
+        + _opt(figs['stimulus_type'])
+        + _opt(figs['task_model'])
+        + _opt(figs['skill'])
+        + '</div>'
         + '<div class="divider"></div>'
         + '<h3 class="sub-head" style="border-top:0;padding-top:0;margin-top:6px">Question quality '
           '<span>difficulty vs. point-biserial</span></h3>'
         + pb_guide_html(len(df))
         + scatter_html(df, q, std_name, nq, show_classes)
         + pb_flags_html(df, q, std_name, nq)
-        + '<div class="divider"></div>'
-        + '<div class="chart-grid-2">'
-        + _opt(figs['oi'])
-        + _opt(figs['stimulus_type'])
-        + _opt(figs['task_model'])
-        + _opt(figs['skill'])
-        + '</div>',
+        + (('<div class="divider"></div>' + _opt(figs['box'])) if show_classes else ''),
         num='+'))
 
     nav_links = ''.join(f'<a href="#{a}">{lbl}</a>' for a, lbl, *_ in blocks) \
