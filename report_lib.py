@@ -767,7 +767,7 @@ def fig_groups(df, nq):
         fig.add_trace(go.Bar(
             x=[name], y=[mean_val], name=f'{name}  (n={n})',
             marker_color=color, marker_line_color='white', marker_line_width=1.5,
-            text=[f'{mean_val:.1f}'], textposition='outside', width=0.45, hoverinfo='skip',
+            text=[f'{mean_val:.1f}'], textposition='outside', cliponaxis=False, width=0.45, hoverinfo='skip',
         ))
     fig.add_hline(y=df['MC_Score'].mean(), line_dash='dot', line_color=C['navy'], opacity=0.55,
                   annotation_text=f'Overall: {df["MC_Score"].mean():.1f}',
@@ -777,7 +777,7 @@ def fig_groups(df, nq):
         legend=dict(orientation='h', y=-0.2, x=0.5, xanchor='center'),
         barmode='group',
         xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
-        yaxis=dict(title=f'Average Score (out of {nq})', range=[0, nq * 1.28],
+        yaxis=dict(title=f'Average Score (out of {nq})', range=[0, nq],
                    showgrid=True, gridcolor='#EEEEEE', zeroline=False),
     )
     return fig
