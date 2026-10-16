@@ -1747,8 +1747,7 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
 
     /* ── Hero ── */
     .hero {{
-      background: radial-gradient(1200px 300px at 85% -40%, rgba(53,174,151,.35), transparent 60%),
-                  linear-gradient(135deg, #1F2A44 0%, #273557 100%);
+      background: linear-gradient(135deg, #142743 0%, #173862 100%);
       color: white; padding: 22px 32px 30px;
     }}
     .hero-inner {{ max-width: 1080px; margin: 0 auto; }}
@@ -1759,7 +1758,7 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
     .home-link:hover {{ color: white; }}
     .eyebrow {{
       font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-      color: #8FE0CF; margin: 0 0 6px;
+      color: #f2bd00; margin: 0 0 6px;
     }}
     .hero h1 {{ margin: 0; font-size: clamp(1.5rem, 3.2vw, 2.1rem); font-weight: 800; letter-spacing: -.02em; }}
     .meta {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }}
