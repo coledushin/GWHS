@@ -446,7 +446,7 @@ def fig_class_bar(df, nq):
     fig.update_xaxes(tickvals=list(class_centers.values()), ticktext=list(class_centers.keys()),
                      showgrid=False, zeroline=False,
                      range=[-0.25, current_x - group_gap + 0.25])
-    fig.update_yaxes(title_text=f'Avg Score (out of {nq})', range=[0, nq * 1.28],
+    fig.update_yaxes(title_text=f'Avg Score (out of {nq})', range=[0, nq],
                      showgrid=True, gridcolor='#EEEEEE', zeroline=False)
     fig.update_layout(**LAYOUT, title='Average Score by Class & Period', height=320)
     return fig
@@ -475,12 +475,12 @@ def fig_grade_bar(df, nq):
             name=f'Grade {int(grade) if float(grade).is_integer() else grade}  (n={n})',
             marker_color=grade_palette[i % len(grade_palette)],
             marker_line_color='white', marker_line_width=1.5,
-            text=[f'{mean_val:.1f}'], textposition='outside',
+            text=[f'{mean_val:.1f}'], textposition='outside', cliponaxis=False,
             width=0.45,
             hovertemplate=f'Grade {grade}: {mean_val:.1f}/{nq} avg  (n={n})<extra></extra>',
         ))
     fig.update_xaxes(showgrid=False, zeroline=False)
-    fig.update_yaxes(title_text=f'Avg Score (out of {nq})', range=[0, nq * 1.28],
+    fig.update_yaxes(title_text=f'Avg Score (out of {nq})', range=[0, nq],
                      showgrid=True, gridcolor='#EEEEEE', zeroline=False)
     fig.update_layout(**LAYOUT, title='Average Score by Grade', height=320,
                       showlegend=False)
