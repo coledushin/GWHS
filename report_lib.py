@@ -990,148 +990,6 @@ def scatter_html(df, q, std_name, nq, show_classes=True):
     return chart_div
 
 
-def fig_oi(df, q, nq):
-    if 'Need_OI' not in q.columns:
-        return None
-
-    def is_oi(val):
-        if pd.isna(val): return False
-        return str(val).strip().lower() not in ('', 'no', 'n', 'false', '0', 'nan', 'none')
-
-    q_copy = q.copy()
-    q_copy['OI_Required'] = q_copy['Need_OI'].apply(is_oi)
-    oi_yes = q_copy[q_copy['OI_Required']]['Q_Num'].tolist()
-    oi_no  = q_copy[~q_copy['OI_Required']]['Q_Num'].tolist()
-    categories = [(lbl, qns) for lbl, qns in [('Requires OI', oi_yes), ('No OI Needed', oi_no)] if qns]
-    if len(categories) < 2:
-        return None
-
-    labels   = [lbl for lbl, _ in categories]
-    vals     = [float(np.mean([df[f'Q{qn}'].mean() for qn in qns])) for _, qns in categories]
-    q_counts = [len(qns) for _, qns in categories]
-
-    fig = go.Figure(go.Bar(
-        x=labels, y=vals,
-        marker_color=[pct_color(v) for v in vals],
-        marker_line_color='white', marker_line_width=1.5,
-        text=[f'{v:.0%}' for v in vals], textposition='outside', cliponaxis=False,
-        hovertemplate='%{customdata} questions<extra></extra>',
-        customdata=q_counts, showlegend=False, width=0.4,
-    ))
-    fig.update_layout(**LAYOUT,
-        title='Outside Information Required vs. Not', height=380,
-        xaxis=dict(showgrid=False, zeroline=False),
-        yaxis=dict(tickformat='.0%', title='Average % Correct', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
-                   showgrid=True, gridcolor='#EEEEEE', zeroline=False),
-    )
-    return fig
-
-
-def fig_task_model(df, q, nq):
-    tms = q.dropna(subset=['Task_Model'])
-    if tms.empty:
-        return None
-
-    def tm_sort_key(tm):
-        m = _re.match(r'^(\d+)', tm.strip())
-        return int(m.group(1)) if m else float('inf')
-
-    def tm_num(tm):
-        m = _re.match(r'^(\d+)', tm.strip())
-        return m.group(1) if m else tm[:3]
-
-    task_models = sorted(tms['Task_Model'].astype(str).str.strip().unique().tolist(), key=tm_sort_key)
-    labels, vals, hover_texts = [], [], []
-    for tm in task_models:
-        tm_qs  = q[q['Task_Model'].astype(str).str.strip() == tm]['Q_Num'].tolist()
-        avg    = float(np.mean([df[f'Q{qn}'].mean() for qn in tm_qs]))
-        q_list = ', '.join(str(qn) for qn in sorted(tm_qs))
-        labels.append(tm_num(tm))
-        vals.append(avg)
-        hover_texts.append(f'<b>{tm}</b><br>Questions: {q_list}')
-
-    fig = go.Figure(go.Bar(
-        x=labels, y=vals, marker_color=[pct_color(v) for v in vals],
-        marker_line_color='white', marker_line_width=1.5,
-        text=[f'{v:.0%}' for v in vals], textposition='outside', cliponaxis=False,
-        hovertext=hover_texts, hoverinfo='text', showlegend=False, width=0.5,
-    ))
-    fig.update_layout(**LAYOUT,
-        title='Performance by Task Model', height=380,
-        xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=13)),
-        yaxis=dict(tickformat='.0%', title='Average % Correct', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
-                   showgrid=True, gridcolor='#EEEEEE', zeroline=False),
-    )
-    return fig
-
-
-def fig_skill(df, q, nq):
-    sks = q.dropna(subset=['Skill'])
-    if sks.empty:
-        return None
-
-    def skill_label(s):
-        m = _re.match(r'^([A-Z](?:\.\d+)?)', s.strip())
-        return m.group(1) if m else s[:2]
-
-    skills = sorted(sks['Skill'].astype(str).str.strip().unique().tolist())
-    labels, vals, hover_texts = [], [], []
-    for sk in skills:
-        sk_qs  = q[q['Skill'].astype(str).str.strip() == sk]['Q_Num'].tolist()
-        avg    = float(np.mean([df[f'Q{qn}'].mean() for qn in sk_qs]))
-        q_list = ', '.join(str(qn) for qn in sorted(sk_qs))
-        labels.append(skill_label(sk))
-        vals.append(avg)
-        hover_texts.append(f'<b>{sk}</b><br>Questions: {q_list}')
-
-    fig = go.Figure(go.Bar(
-        x=labels, y=vals, marker_color=[pct_color(v) for v in vals],
-        marker_line_color='white', marker_line_width=1.5,
-        text=[f'{v:.0%}' for v in vals], textposition='outside', cliponaxis=False,
-        hovertext=hover_texts, hoverinfo='text', showlegend=False, width=0.4,
-    ))
-    fig.update_layout(**LAYOUT,
-        title='Performance by Skill', height=380,
-        xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=13)),
-        yaxis=dict(tickformat='.0%', title='Average % Correct', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
-                   showgrid=True, gridcolor='#EEEEEE', zeroline=False),
-    )
-    return fig
-
-
-def fig_stimulus_type(df, q, nq):
-    if 'Stimulus_Type' not in q.columns:
-        return None
-    sts = q.dropna(subset=['Stimulus_Type'])
-    if sts.empty:
-        return None
-
-    stim_colors = {'Text-based': C['blue'], 'Visual-based': C['teal'], 'Map-based': C['orange']}
-    types = sorted(sts['Stimulus_Type'].astype(str).str.strip().unique().tolist())
-    labels, vals, colors, hover_texts = [], [], [], []
-    for st in types:
-        st_qs  = q[q['Stimulus_Type'].astype(str).str.strip() == st]['Q_Num'].tolist()
-        avg    = float(np.mean([df[f'Q{qn}'].mean() for qn in st_qs]))
-        q_list = ', '.join(str(qn) for qn in sorted(st_qs))
-        labels.append(st)
-        vals.append(avg)
-        colors.append(stim_colors.get(st, C['gray']))
-        hover_texts.append(f'Questions: {q_list}')
-    fig = go.Figure(go.Bar(
-        x=labels, y=vals, marker_color=colors,
-        marker_line_color='white', marker_line_width=1.5,
-        text=[f'{v:.0%}' for v in vals], textposition='outside', cliponaxis=False,
-        hovertext=hover_texts, hoverinfo='text', showlegend=False, width=0.4,
-    ))
-    fig.update_layout(**LAYOUT,
-        title='Performance by Stimulus Type', height=380,
-        xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=13)),
-        yaxis=dict(tickformat='.0%', title='Average % Correct', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
-                   showgrid=True, gridcolor='#EEEEEE', zeroline=False),
-    )
-    return fig
-
-
 # ── Written response & scale score builders ───────────────────────────────────
 ESSAY_COLORS = {0: '#B83246', 0.5: '#CF4556', 1: '#E0625F', 1.5: '#EB8058', 2: '#F2A541',
                 2.5: '#F6C56F', 3: '#8ED1C0', 3.5: '#5BBFA9', 4: '#35AE97', 4.5: '#22917B', 5: '#16735F'}
@@ -1208,6 +1066,168 @@ def _with_views(fig, cfgs, traces=None):
   attach();
 }})();
 </script>'''
+
+
+def _category_bar_html(df, cats, title, width, show_classes=True, colors=None, tickfont=13):
+    """Avg % correct per question category, with multi-select class buttons.
+    cats = [(label, q_nums, hovertext)]; colors fixes bar colors, else shaded by band."""
+    def avgs(fdf):
+        return [float(np.mean([fdf[f'Q{qn}'].mean() for qn in qns])) for _, qns, _ in cats]
+
+    v0 = avgs(df)
+    fig = go.Figure(go.Bar(
+        x=[lbl for lbl, _, _ in cats], y=v0,
+        marker_color=colors or [pct_color(v) for v in v0],
+        marker_line_color='white', marker_line_width=1.5,
+        text=[f'{v:.0%}' for v in v0], textposition='outside', cliponaxis=False,
+        hovertext=[h for _, _, h in cats], hoverinfo='text', showlegend=False, width=width,
+    ))
+    fig.update_layout(**LAYOUT,
+        title=title, height=380,
+        xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(size=tickfont)),
+        yaxis=dict(tickformat='.0%', title='Average % Correct', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
+                   showgrid=True, gridcolor='#EEEEEE', zeroline=False),
+    )
+    classes = _views(df, show_classes)[1:]
+    # Per class, per question: [sum correct, n answered] so any mix of classes can be pooled in JS
+    sums = {c: {qn: [float(df.loc[df['Class'] == c, f'Q{qn}'].sum()),
+                     int(df.loc[df['Class'] == c, f'Q{qn}'].count())]
+                for _, qns, _ in cats for qn in qns}
+            for c in classes}
+    return f'<div>{_with_class_filter(fig, classes, sums, [qns for _, qns, _ in cats], v0, colors is None)}</div>'
+
+
+def _with_class_filter(fig, classes, sums, cat_qs, overall, band_colors):
+    """Chart plus multi-select class buttons: bars show the pooled students of every selected
+    class; Overall (or deselecting all) shows everyone."""
+    chart_div = to_div(fig)
+    if not classes:
+        return chart_div
+    m = _re.search(r'<div id="([^"]+)"', chart_div)
+    fig_id = m.group(1) if m else 'plotly-view'
+    ctr_id = 'cf-' + fig_id[-8:]
+    btns = ''.join(
+        f'<button class="q-btn{" q-btn-active" if v == "Overall" else ""}" '
+        f'data-view="{v}" data-ctr="{ctr_id}">{v}</button>'
+        for v in ['Overall'] + classes)
+    bands = json.dumps([C['teal'], C['orange'], C['red']])
+    return f'''<div class="q-btns"><span class="btn-label">Classes</span>{btns}</div>
+{chart_div}
+<script>
+(function(){{
+  var sums={json.dumps({c: {str(k): v for k, v in d.items()} for c, d in sums.items()})},
+      catQs={json.dumps(cat_qs)}, overall={json.dumps(overall)}, bands={bands};
+  function band(p){{ return p>=0.70?bands[0]:(p>=0.50?bands[1]:bands[2]); }}
+  function attach(){{
+    var el=document.getElementById('{fig_id}');
+    if(!el){{setTimeout(attach,80);return;}}
+    var btns=document.querySelectorAll('.q-btn[data-ctr="{ctr_id}"]');
+    function render(){{
+      var sel=[].filter.call(btns,function(b){{return b.dataset.view!=='Overall'&&b.classList.contains('q-btn-active');}})
+                 .map(function(b){{return b.dataset.view;}});
+      btns[0].classList.toggle('q-btn-active', sel.length===0);
+      var ys=sel.length===0?overall:catQs.map(function(qs){{
+        var t=0,n=0;
+        qs.forEach(function(q){{
+          var s=0,c=0;
+          sel.forEach(function(k){{ s+=sums[k][q][0]; c+=sums[k][q][1]; }});
+          if(c){{ t+=s/c; n++; }}
+        }});
+        return n?t/n:0;
+      }});
+      var upd={{y:[ys], text:[ys.map(function(v){{return Math.round(v*100)+'%';}})]}};
+      if({json.dumps(band_colors)}) upd['marker.color']=[ys.map(band)];
+      Plotly.restyle(el, upd, [0]);
+    }}
+    btns.forEach(function(btn){{
+      btn.addEventListener('click',function(){{
+        if(this.dataset.view==='Overall') btns.forEach(function(b){{b.classList.remove('q-btn-active');}});
+        else this.classList.toggle('q-btn-active');
+        render();
+      }});
+    }});
+  }}
+  attach();
+}})();
+</script>'''
+
+
+def oi_html(df, q, nq, show_classes=True):
+    if 'Need_OI' not in q.columns:
+        return None
+
+    def is_oi(val):
+        if pd.isna(val): return False
+        return str(val).strip().lower() not in ('', 'no', 'n', 'false', '0', 'nan', 'none')
+
+    q_copy = q.copy()
+    q_copy['OI_Required'] = q_copy['Need_OI'].apply(is_oi)
+    oi_yes = q_copy[q_copy['OI_Required']]['Q_Num'].tolist()
+    oi_no  = q_copy[~q_copy['OI_Required']]['Q_Num'].tolist()
+    cats = [(lbl, qns, f'{len(qns)} questions')
+            for lbl, qns in [('Requires OI', oi_yes), ('No OI Needed', oi_no)] if qns]
+    if len(cats) < 2:
+        return None
+    return _category_bar_html(df, cats, 'Outside Information Required vs. Not', 0.4,
+                              show_classes, tickfont=12)
+
+
+def task_model_html(df, q, nq, show_classes=True):
+    tms = q.dropna(subset=['Task_Model'])
+    if tms.empty:
+        return None
+
+    def tm_sort_key(tm):
+        m = _re.match(r'^(\d+)', tm.strip())
+        return int(m.group(1)) if m else float('inf')
+
+    def tm_num(tm):
+        m = _re.match(r'^(\d+)', tm.strip())
+        return m.group(1) if m else tm[:3]
+
+    task_models = sorted(tms['Task_Model'].astype(str).str.strip().unique().tolist(), key=tm_sort_key)
+    cats = []
+    for tm in task_models:
+        tm_qs  = q[q['Task_Model'].astype(str).str.strip() == tm]['Q_Num'].tolist()
+        q_list = ', '.join(str(qn) for qn in sorted(tm_qs))
+        cats.append((tm_num(tm), tm_qs, f'<b>{tm}</b><br>Questions: {q_list}'))
+    return _category_bar_html(df, cats, 'Performance by Task Model', 0.5, show_classes)
+
+
+def skill_html(df, q, nq, show_classes=True):
+    sks = q.dropna(subset=['Skill'])
+    if sks.empty:
+        return None
+
+    def skill_label(s):
+        m = _re.match(r'^([A-Z](?:\.\d+)?)', s.strip())
+        return m.group(1) if m else s[:2]
+
+    skills = sorted(sks['Skill'].astype(str).str.strip().unique().tolist())
+    cats = []
+    for sk in skills:
+        sk_qs  = q[q['Skill'].astype(str).str.strip() == sk]['Q_Num'].tolist()
+        q_list = ', '.join(str(qn) for qn in sorted(sk_qs))
+        cats.append((skill_label(sk), sk_qs, f'<b>{sk}</b><br>Questions: {q_list}'))
+    return _category_bar_html(df, cats, 'Performance by Skill', 0.4, show_classes)
+
+
+def stimulus_type_html(df, q, nq, show_classes=True):
+    if 'Stimulus_Type' not in q.columns:
+        return None
+    sts = q.dropna(subset=['Stimulus_Type'])
+    if sts.empty:
+        return None
+
+    stim_colors = {'Text-based': C['blue'], 'Visual-based': C['teal'], 'Map-based': C['orange']}
+    types = sorted(sts['Stimulus_Type'].astype(str).str.strip().unique().tolist())
+    cats = []
+    for st in types:
+        st_qs  = q[q['Stimulus_Type'].astype(str).str.strip() == st]['Q_Num'].tolist()
+        q_list = ', '.join(str(qn) for qn in sorted(st_qs))
+        cats.append((st, st_qs, f'Questions: {q_list}'))
+    return _category_bar_html(df, cats, 'Performance by Stimulus Type', 0.4, show_classes,
+                              colors=[stim_colors.get(st, C['gray']) for st in types])
 
 
 def written_kpi_html(df, items):
@@ -1624,10 +1644,6 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
         'cp_grade':      fig_grade_bar(df, nq)        if show_classes else None,
         'grp':           fig_groups(df, nq),
         'box':           fig_boxplot(df, nq)           if show_classes else None,
-        'oi':            fig_oi(df, q, nq),
-        'task_model':    fig_task_model(df, q, nq),
-        'skill':         fig_skill(df, q, nq),
-        'stimulus_type': fig_stimulus_type(df, q, nq),
     }
 
     has_written = bool(written)
@@ -1692,10 +1708,10 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
     sections = [section(t, a, c, subtitle=s, num=i + 1) for i, (a, _, t, s, c) in enumerate(blocks)]
     sections.append(section('Appendix', 'appendix',
         '<div class="chart-grid-2">'
-        + _opt(figs['oi'])
-        + _opt(figs['stimulus_type'])
-        + _opt(figs['task_model'])
-        + _opt(figs['skill'])
+        + (oi_html(df, q, nq, show_classes) or '')
+        + (stimulus_type_html(df, q, nq, show_classes) or '')
+        + (task_model_html(df, q, nq, show_classes) or '')
+        + (skill_html(df, q, nq, show_classes) or '')
         + '</div>'
         + '<div class="divider"></div>'
         + '<h3 class="sub-head" style="border-top:0;padding-top:0;margin-top:6px">Question quality '
