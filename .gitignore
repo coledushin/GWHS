@@ -3,3 +3,12 @@ __pycache__/
 .DS_Store
 *.xlsx~
 .claude/
+
+# Student data and secure assessments: never commit (repo history was purged 2026-11-25)
+*.xlsx
+*.xls
+*.csv
+~$*
+US/April CMA/US April CMA Test.pdf
+Global/April CMA/Global April CMA.pdf
+*/May Final/* Final Exam.pdf
