@@ -366,7 +366,8 @@ def load_data(file, subject=None):
     df['Is_IEP'] = _is_flagged(df['IEP'])
 
     # Written scores: a number is the score; "-" means the student left it blank, which counts
-    # as 0 and is tracked in WB_<id>; an empty cell means not scored yet.
+    # as 0 and is tracked in WB_<id>; an empty cell means not scored yet (but see the
+    # short-answer rule below).
     for wid, *_ in written_raw:
         raw = df[f'W_{wid}']
         blank = raw.map(lambda v: isinstance(v, str) and v.strip() in ('-', '–', '—'))
@@ -375,6 +376,17 @@ def load_data(file, subject=None):
 
     subject = subject or _infer_subject(q)
     written = _written_items(df, written_raw, subject)
+
+    # Short answers (CRQs): once a student has any short answer scored, their other empty
+    # short-answer cells are blank responses too. A student with none scored is not graded yet,
+    # and a question nobody has scores for is skipped.
+    short = [it for it in written if it['kind'] == 'short' and it['entered']]
+    if short:
+        graded = df[[it['col'] for it in short]].notna().any(axis=1)
+        for it in short:
+            empty = graded & df[it['col']].isna()
+            df.loc[empty, it['col']] = 0.0
+            df.loc[empty, f"WB_{it['id']}"] = True
 
     return df, q, written, subject, std_lookup, std_name, answer_cols, correct_cols, NQ
 
@@ -1268,7 +1280,7 @@ SHORT_OUTCOMES = [('Correct', C['teal']), ('Incorrect', C['red']), ('Blank', C['
 
 def written_short_html(df, items, show_classes=True):
     """Each 1-credit question as one stacked bar: % of scored students who earned the credit,
-    attempted it without earning it, or left it blank ("-" in the sheet)."""
+    attempted it without earning it, or left it blank ("-" or an empty cell; see load_data)."""
     items = [it for it in items if it['kind'] == 'short' and it['entered']]
     if not items:
         return ''

@@ -82,15 +82,38 @@ for f in glob.glob('**/*.xlsx', recursive=True):
                     first, last = v.rsplit(' ', 1)
                     ids.add(f'{last}, {first}'.lower())
 
+WORD = set('abcdefghijklmnopqrstuvwxyz0123456789')
+
+
+def find_ids(text, by_first, other):
+    """Identifiers that appear in text as whole words. Splits text into words once and only
+    compares the identifiers that start with each word, so large reports stay fast."""
+    found = set()
+    for m in re.finditer(r'[a-z0-9]+', text):
+        for s in by_first.get(m.group(), ()):
+            end = m.start() + len(s)
+            if text.startswith(s, m.start()) and (end == len(text) or text[end] not in WORD):
+                found.add(s)
+    if other:   # identifiers that start with punctuation (rare)
+        found.update(re.findall('|'.join(r'(?<![a-z0-9])' + re.escape(s) + r'(?![a-z0-9])'
+                                         for s in other), text))
+    return found
+
+
 if ids:
-    pattern = re.compile('|'.join(r'(?<![a-z0-9])' + re.escape(s) + r'(?![a-z0-9])'
-                                  for s in sorted(ids, key=len, reverse=True)))
+    by_first, other = {}, []
+    for s in ids:
+        m = re.match(r'[a-z0-9]+', s)
+        if m:
+            by_first.setdefault(m.group(), []).append(s)
+        else:
+            other.append(s)
     for p in staged:
         if p.lower().endswith(DATA_EXT):
             continue
         blob = subprocess.run(['git', 'show', f':{p}'], capture_output=True).stdout
         text = ' '.join(blob.decode('utf-8', 'ignore').lower().split())
-        n = len(set(pattern.findall(text)))
+        n = len(find_ids(text, by_first, other))
         if n:
             problems.append(f'{p}: contains {n} student identifier(s) from your score spreadsheets')
 
