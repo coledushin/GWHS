@@ -365,8 +365,13 @@ def load_data(file, subject=None):
     df['Is_ELL'] = _is_flagged(df['ELL'])
     df['Is_IEP'] = _is_flagged(df['IEP'])
 
+    # Written scores: a number is the score; "-" means the student left it blank, which counts
+    # as 0 and is tracked in WB_<id>; an empty cell means not scored yet.
     for wid, *_ in written_raw:
-        df[f'W_{wid}'] = pd.to_numeric(df[f'W_{wid}'], errors='coerce')
+        raw = df[f'W_{wid}']
+        blank = raw.map(lambda v: isinstance(v, str) and v.strip() in ('-', '–', '—'))
+        df[f'W_{wid}'] = pd.to_numeric(raw, errors='coerce').mask(blank, 0.0)
+        df[f'WB_{wid}'] = blank
 
     subject = subject or _infer_subject(q)
     written = _written_items(df, written_raw, subject)
@@ -1093,8 +1098,8 @@ def _category_bar_html(df, cats, title, width, show_classes=True, colors=None, t
 
 
 def _with_class_filter(fig, classes, sums, cat_qs, overall, band_colors):
-    """Chart plus multi-select class buttons: bars show the pooled students of every selected
-    class; Overall (or deselecting all) shows everyone."""
+    """Chart plus class buttons. A click switches to that class (or Overall); shift-click adds
+    or removes a class, and the bars then pool the students of every selected class."""
     chart_div = to_div(fig)
     if not classes:
         return chart_div
@@ -1103,7 +1108,9 @@ def _with_class_filter(fig, classes, sums, cat_qs, overall, band_colors):
     ctr_id = 'cf-' + fig_id[-8:]
     btns = ''.join(
         f'<button class="q-btn{" q-btn-active" if v == "Overall" else ""}" '
-        f'data-view="{v}" data-ctr="{ctr_id}">{v}</button>'
+        f'data-view="{v}" data-ctr="{ctr_id}"'
+        + ('' if v == 'Overall' else ' title="Shift-click to combine classes"')
+        + f'>{v}</button>'
         for v in ['Overall'] + classes)
     bands = json.dumps([C['teal'], C['orange'], C['red']])
     return f'''<div class="q-btns"><span class="btn-label">Classes</span>{btns}</div>
@@ -1135,9 +1142,15 @@ def _with_class_filter(fig, classes, sums, cat_qs, overall, band_colors):
       Plotly.restyle(el, upd, [0]);
     }}
     btns.forEach(function(btn){{
-      btn.addEventListener('click',function(){{
-        if(this.dataset.view==='Overall') btns.forEach(function(b){{b.classList.remove('q-btn-active');}});
-        else this.classList.toggle('q-btn-active');
+      // Shift-click would otherwise also select the button text.
+      btn.addEventListener('mousedown',function(e){{ if(e.shiftKey) e.preventDefault(); }});
+      btn.addEventListener('click',function(e){{
+        var cls=this.dataset.view!=='Overall';
+        if(cls&&e.shiftKey){{ this.classList.toggle('q-btn-active'); }}   // add/remove a class
+        else{{                                                             // switch to just this one
+          btns.forEach(function(b){{b.classList.remove('q-btn-active');}});
+          if(cls) this.classList.add('q-btn-active');
+        }}
         render();
       }});
     }});
@@ -1250,8 +1263,12 @@ def written_kpi_html(df, items):
     return '<div class="kpi-row">' + ''.join(tiles) + '</div>'
 
 
+SHORT_OUTCOMES = [('Correct', C['teal']), ('Incorrect', C['red']), ('Blank', C['lgray'])]
+
+
 def written_short_html(df, items, show_classes=True):
-    """% of students earning the credit on each 1-credit question, grouped by set."""
+    """Each 1-credit question as one stacked bar: % of scored students who earned the credit,
+    attempted it without earning it, or left it blank ("-" in the sheet)."""
     items = [it for it in items if it['kind'] == 'short' and it['entered']]
     if not items:
         return ''
@@ -1260,35 +1277,51 @@ def written_short_html(df, items, show_classes=True):
     y     = [[it['set'] or it['group'] for it in items], names] if any(it['set'] for it in items) else names
 
     def stats(fdf):
-        p = [float(fdf[it['col']].fillna(0).mean()) for it in items]
-        hover = [f"<b>{it['label']}</b>{' · ' + it['tag'] if it['tag'] else ''}<br>"
-                 f"{_wrap(it['question'])}<br><br>{pv:.0%} earned the credit "
-                 f"(n={len(fdf)}; {int(fdf[it['col']].isna().sum())} blank)"
-                 for it, pv in zip(items, p)]
-        return p, hover
+        """{outcome: ([share per question], [hover per question])}"""
+        out = {o: ([], []) for o, _ in SHORT_OUTCOMES}
+        for it in items:
+            score, blank = fdf[it['col']], fdf[f"WB_{it['id']}"]
+            scored = score.notna()
+            n = int(scored.sum())
+            counts = {'Correct': int((scored & (score > 0)).sum()),
+                      'Blank': int(blank.sum())}
+            counts['Incorrect'] = n - counts['Correct'] - counts['Blank']
+            head = (f"<b>{it['label']}</b>{' · ' + it['tag'] if it['tag'] else ''}<br>"
+                    f"{_wrap(it['question'])}<br><br>")
+            for o, _ in SHORT_OUTCOMES:
+                share = counts[o] / n if n else 0.0
+                out[o][0].append(share)
+                out[o][1].append(head + f'<b>{o}: {share:.0%}</b> ({counts[o]} of {n} students)')
+        return out
+
+    def labels(shares):
+        return [f'{s:.0%}' if s >= 0.06 else '' for s in shares]
 
     views = _views(pool, show_classes)
     data  = {v: stats(pool if v == 'Overall' else pool[pool['Class'] == v]) for v in views}
-    p0, h0 = data['Overall']
-    fig = go.Figure(go.Bar(
-        y=y, x=p0, orientation='h', marker_color=[pct_color(v) for v in p0], width=0.62,
-        text=[f'{v:.0%}' for v in p0], textposition='outside', cliponaxis=False,
-        textfont=dict(size=12, color=C['navy']),
-        hovertext=h0, hoverinfo='text', showlegend=False,
-    ))
-    add_color_legend(fig)
+    fig = go.Figure()
+    for o, color in SHORT_OUTCOMES:
+        shares, hover = data['Overall'][o]
+        fig.add_trace(go.Bar(
+            y=y, x=shares, name=o, orientation='h', marker_color=color, width=0.62,
+            text=labels(shares), textposition='inside', insidetextanchor='middle',
+            textfont=dict(size=12, color='white' if o != 'Blank' else C['navy']),
+            hovertext=hover, hoverinfo='text',
+        ))
     fig.update_layout(**LAYOUT,
-        title='Short Answers — % of Students Earning the Credit',
-        height=max(260, 110 + 44 * len(items)),
-        legend=dict(orientation='h', y=-0.12, x=0.5, xanchor='center', yanchor='top', font=dict(size=11)),
-        xaxis=dict(tickformat='.0%', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1.12],
+        title='Short Answers — Correct, Incorrect, or Blank',
+        barmode='stack', height=max(260, 110 + 44 * len(items)),
+        legend=dict(orientation='h', y=-0.12, x=0.5, xanchor='center', yanchor='top', font=dict(size=11),
+                    traceorder='normal'),
+        xaxis=dict(tickformat='.0%', tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], range=[0, 1],
                    showgrid=True, zeroline=False),
         yaxis=dict(autorange='reversed', showgrid=False, tickfont=dict(size=12), ticksuffix='  '),
     )
     fig.update_layout(margin=dict(l=20, r=30, t=50, b=60))
-    cfgs = {v: {'x': [data[v][0]], 'marker.color': [[pct_color(x) for x in data[v][0]]],
-                'text': [[f'{x:.0%}' for x in data[v][0]]], 'hovertext': [data[v][1]]} for v in views}
-    return _with_views(fig, cfgs, traces=[0])
+    cfgs = {v: {'x': [data[v][o][0] for o, _ in SHORT_OUTCOMES],
+                'text': [labels(data[v][o][0]) for o, _ in SHORT_OUTCOMES],
+                'hovertext': [data[v][o][1] for o, _ in SHORT_OUTCOMES]} for v in views}
+    return _with_views(fig, cfgs, traces=[0, 1, 2])
 
 
 def written_essay_html(df, items, show_classes=True):
