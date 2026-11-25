@@ -12,3 +12,9 @@ __pycache__/
 US/April CMA/US April CMA Test.pdf
 Global/April CMA/Global April CMA.pdf
 */May Final/* Final Exam.pdf
+
+# Quarto build files (render.py)
+assets/plotly.min.js
+/report.html
+/.quarto/
+*.quarto.html

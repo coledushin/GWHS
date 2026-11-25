@@ -1,0 +1,8 @@
+# Report config, rendered by render.py with report.qmd. Paths are relative to the repo root.
+file: US/May Final/US May Final Data.xlsx
+title: US History Final — May 2026
+output: US/May Final/us_may_final_report.html
+class_colors:          # palette names from report_lib.C, or hex codes
+  Bermejo: blue
+  Dushin: orange
+  Kovelsky: teal

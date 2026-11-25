@@ -1,0 +1,113 @@
+---
+# One template for every exam report. render.py renders it once per exam config:
+#   REPORT_CONFIG="US/June Regents/report.yml" quarto render report.qmd --metadata-file <title.yml>
+# Sections are "## Title {#anchor nav="Nav label"}"; the number badges and the sticky
+# nav are built automatically from them, so to add, drop or reorder a section just edit
+# this file. Sections that only appear for some exams are printed from Python with
+# lib.md_section(). The analysis and charts live in report_lib.py.
+lang: en
+format:
+  html:
+    minimal: true
+    embed-resources: true
+    section-divs: true
+    css: assets/report.css
+    include-in-header:
+      text: |
+        <link rel="icon" type="image/webp" href="https://www.westinghousehs.org/images/index-page/gwhs-logo.webp">
+        <script src="assets/plotly.min.js"></script>
+    include-after-body: assets/report-nav.html
+execute:
+  echo: false
+  warning: false
+jupyter: python3
+---
+
+```{python}
+#| output: asis
+import os
+import report_lib as lib
+
+config = os.environ.get('REPORT_CONFIG', 'US/June Regents/report.yml')  # set by render.py
+
+lib.write_plotly_js('assets/plotly.min.js')
+x = lib.prepare(lib.load_config(config))
+print(lib.raw(lib.hero_html(x)))
+```
+
+::: {.main}
+
+## At a Glance {#overview nav="Overview"}
+
+::: {.subtitle}
+Bars are shaded by performance band; the dotted line marks the average.
+:::
+
+```{python}
+#| output: asis
+print(lib.raw(lib.kpi_html(x.df, x.nq) + lib.to_div(lib.fig_histogram(x.df, x.nq))))
+```
+
+```{python}
+#| output: asis
+if x.has_scale:
+    print(lib.md_section('Regents Scale Scores', 'scale', 'Scale Score',
+        lib.scale_section_html(x.df, x.conv, x.written, x.subject, x.show_classes),
+        'Shading shows performance Levels 1–5; the dotted line marks passing.'))
+if x.show_classes:
+    print(lib.md_section('Class & Period Performance', 'class-period', 'Classes',
+        lib.class_period_html(x.df, x.nq)))
+```
+
+## Which Questions Were Hardest? {#difficulty nav="Difficulty"}
+
+::: {.subtitle}
+Hover a cell for the question, its standard, and the correct answer.
+:::
+
+```{python}
+#| output: asis
+print(lib.raw(lib.difficulty_section_html(x.df, x.q, x.std_name, x.nq, x.show_classes)))
+```
+
+## What Did Students Select? {#distractor nav="Answer Choices"}
+
+```{python}
+#| output: asis
+print(lib.raw(lib.distractor_html(x.df, x.q, x.nq)))
+```
+
+```{python}
+#| output: asis
+if x.has_written:
+    print(lib.md_section('Written Response', 'written', 'Written',
+        lib.written_section_html(x.df, x.written, x.show_classes)))
+```
+
+## Student Group Comparison {#groups nav="Groups"}
+
+```{python}
+#| output: asis
+print(lib.raw(lib.groups_section_html(x.df, x.nq)))
+```
+
+## Key Takeaways {#takeaways nav="Takeaways"}
+
+```{python}
+#| output: asis
+print(lib.raw(lib.takeaways_html(x.df, x.q, x.std_name, x.nq, x.show_classes)))
+```
+
+## Appendix {#appendix .appendix nav="Appendix"}
+
+```{python}
+#| output: asis
+print(lib.raw(lib.appendix_html(x.df, x.q, x.std_name, x.nq, x.show_classes)))
+```
+
+:::
+
+```{python}
+#| output: asis
+print(lib.raw(lib.footer_html()))
+```

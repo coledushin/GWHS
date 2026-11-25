@@ -1,0 +1,9 @@
+# Report config, rendered by render.py with report.qmd. Paths are relative to the repo root.
+file: US/June Regents/US June Regents Data.xlsx
+title: US History Regents — June 2026
+output: US/June Regents/us_june_regents_report.html
+class_colors:          # palette names from report_lib.C, or hex codes
+  Bermejo: blue
+  Dushin: orange
+  Kovelsky: teal
+  Antaky: red

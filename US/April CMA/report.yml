@@ -1,0 +1,8 @@
+# Report config, rendered by render.py with report.qmd. Paths are relative to the repo root.
+file: US/April CMA/US April CMA Data.xlsx
+title: US History CMA — April 2026
+output: US/April CMA/us_april_cma_report.html
+class_colors:          # palette names from report_lib.C, or hex codes
+  Bermejo: blue
+  Dushin: orange
+  Kovelsky: teal

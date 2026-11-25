@@ -1,0 +1,5 @@
+# Report config, rendered by render.py with report.qmd. Paths are relative to the repo root.
+file: Global/June Regents/Global June 2026 Regents Data.xlsx
+title: Global History Regents — June 2026
+output: Global/June Regents/global_june_regents_report.html
+show_classes: false   # no class/period breakdowns

@@ -1,20 +1,19 @@
 """
 Shared library for GWHS exam report generation.
 
-Each exam's generate_report.py imports this and calls lib.run(config).
+Analysis and charts for the exam reports. The page layout is report.qmd (Quarto);
+render.py renders it once per exam folder's report.yml.
 
-Config keys:
-  file          – path to the Excel data file (relative to CWD or absolute)
+report.yml keys:
+  file          – path to the Excel data file (relative to the repo root)
   title         – report title shown in the header and <title>
   output        – path to write the HTML output
-  home_link     – href for the ← Home nav link (default: '../../index.html')
-  class_colors  – dict mapping class name → hex color (optional, merged over CLASS_COLORS)
-  show_classes  – include per-class charts (default True)
+  home_link     – href for the ← All reports link (default: '../../index.html')
+  class_colors  – class name → palette name from C (e.g. blue) or hex code
+  show_classes  – include per-class charts (default true)
   subject       – 'US' or 'Global' (default: inferred from content-standard codes)
 """
 
-import base64
-import functools
 import json
 import os
 import re as _re
@@ -34,23 +33,9 @@ C = dict(
     blue='#3D6FE8', purple='#8B5CF6', navy='#1F2A44', gray='#8A8F98', lgray='#D9DCE1',
 )
 GRID = '#EEF0F3'
-
-
-@functools.lru_cache(maxsize=None)
-def offline_head():
-    """<head> assets embedded inline so a report opens with no internet connection:
-    Plotly.js from the installed plotly package, and a Latin subset of Inter
-    (assets/inter-subset.woff2, SIL Open Font License)."""
-    from plotly.offline import get_plotlyjs
-    font = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'inter-subset.woff2')
-    with open(font, 'rb') as fh:
-        b64 = base64.b64encode(fh.read()).decode()
-    return (f'<style>@font-face{{font-family:Inter;font-style:normal;font-weight:100 900;'
-            f'font-display:swap;src:url(data:font/woff2;base64,{b64}) format("woff2")}}</style>\n'
-            f'  <script>{get_plotlyjs()}</script>')
 FONT = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"
 
-# Default class colors — overridden by config['class_colors'] in run()
+# Default class colors — overridden by report.yml's class_colors (load_config)
 CLASS_COLORS = {'Bermejo': C['blue'], 'Sourial': C['blue'], 'Dushin': C['orange'], 'Kovelsky': C['teal'], 'Antaky': C['red'],
                 'Other': C['gray']}
 
@@ -111,13 +96,6 @@ def _style(fig):
 def to_div(fig):
     return _style(fig).to_html(full_html=False, include_plotlyjs=False,
                                config={'displayModeBar': False, 'responsive': True})
-
-
-def section(title, anchor, content_html, subtitle='', num=None):
-    badge = f'<span class="sec-num">{num}</span>' if num is not None else ''
-    sub   = f'<p class="subtitle">{subtitle}</p>' if subtitle else ''
-    return (f'<section id="{anchor}"><div class="sec-head">{badge}'
-            f'<div><h2>{title}</h2>{sub}</div></div>{content_html}</section>')
 
 
 # ── Written-response structure (NYS Regents) ──────────────────────────────────
@@ -1651,375 +1629,110 @@ def takeaways_html(df, q, std_name, nq, show_classes=True):
 </script>'''
 
 
-# ── Report assembly ───────────────────────────────────────────────────────────
-def build_html(df, q, written, subject, conv, std_name, nq, title,
-               home_link='../../index.html', show_classes=True):
-    today = date.today().strftime('%B %d, %Y')
+# ── Section bodies (called from report.qmd) ────────────────────────
+def class_period_html(df, nq):
+    bar, dist, grade = fig_class_bar(df, nq), fig_class_dist(df, nq), fig_grade_bar(df, nq)
+    if grade is not None:
+        return ('<div class="chart-grid">' + to_div(bar) + to_div(grade) + '</div>'
+                + to_div(dist))
+    return '<div class="chart-grid">' + to_div(bar) + to_div(dist) + '</div>'
 
-    figs = {
-        'hist':          fig_histogram(df, nq),
-        'cp_bar':        fig_class_bar(df, nq)        if show_classes else None,
-        'cp_dist':       fig_class_dist(df, nq)       if show_classes else None,
-        'cp_grade':      fig_grade_bar(df, nq)        if show_classes else None,
-        'grp':           fig_groups(df, nq),
-        'box':           fig_boxplot(df, nq)           if show_classes else None,
-    }
 
-    has_written = bool(written)
-    has_scale   = (conv is not None and 'Final' in df.columns
-                   and pd.to_numeric(df['Final'], errors='coerce').notna().any())
+def difficulty_section_html(df, q, std_name, nq, show_classes=True):
+    return (f'<div class="scroll-x"><div style="min-width:{max(520, nq * 34)}px">'
+            + difficulty_html(df, q, std_name, nq, show_classes) + '</div></div>')
 
-    def _opt(fig):
-        return to_div(fig) if fig is not None else ''
 
-    # (anchor, nav label, section title, subtitle, content) — numbered in order below
-    blocks = [
-        ('overview', 'Overview', 'At a Glance',
-         'Bars are shaded by performance band; the dotted line marks the average.',
-         kpi_html(df, nq) + to_div(figs['hist'])),
-    ]
+def groups_section_html(df, nq):
+    return to_div(fig_groups(df, nq)) + subgroup_notes_html(df)
 
-    if has_scale:
-        blocks.append(('scale', 'Scale Score', 'Regents Scale Scores',
-            'Shading shows performance Levels 1–5; the dotted line marks passing.',
-            scale_section_html(df, conv, written, subject, show_classes)))
 
-    if show_classes:
-        blocks.append(('class-period', 'Classes', 'Class & Period Performance',
-            '',
-            (
-                '<div class="chart-grid">'
-                + to_div(figs['cp_bar']) + to_div(figs['cp_grade'])
-                + '</div>'
-                + to_div(figs['cp_dist'])
-            ) if figs['cp_grade'] is not None else (
-                '<div class="chart-grid">'
-                + to_div(figs['cp_bar']) + to_div(figs['cp_dist'])
-                + '</div>'
-            )))
+def appendix_html(df, q, std_name, nq, show_classes=True):
+    return ('<div class="chart-grid-2">'
+            + (oi_html(df, q, nq, show_classes) or '')
+            + (stimulus_type_html(df, q, nq, show_classes) or '')
+            + (task_model_html(df, q, nq, show_classes) or '')
+            + (skill_html(df, q, nq, show_classes) or '')
+            + '</div>'
+            + '<div class="divider"></div>'
+            + '<h3 class="sub-head" style="border-top:0;padding-top:0;margin-top:6px">Question quality '
+              '<span>difficulty vs. point-biserial</span></h3>'
+            + pb_guide_html(len(df))
+            + scatter_html(df, q, std_name, nq, show_classes)
+            + pb_flags_html(df, q, std_name, nq)
+            + (('<div class="divider"></div>' + to_div(fig_boxplot(df, nq))) if show_classes else ''))
 
-    blocks += [
-        ('difficulty', 'Difficulty', 'Which Questions Were Hardest?',
-         'Hover a cell for the question, its standard, and the correct answer.',
-         f'<div class="scroll-x"><div style="min-width:{max(520, nq * 34)}px">'
-         + difficulty_html(df, q, std_name, nq, show_classes) + '</div></div>'),
 
-        ('distractor', 'Answer Choices', 'What Did Students Select?',
-         '',
-         distractor_html(df, q, nq)),
-    ]
+# ── Quarto support (report.qmd) ───────────────────────────────────────────────
+def load_config(path):
+    """Read an exam's report.yml and apply its class colors. Returns the config dict."""
+    import yaml
+    global CLASS_COLORS
+    with open(path, encoding='utf-8') as fh:
+        cfg = yaml.safe_load(fh)
+    if cfg.get('class_colors'):
+        CLASS_COLORS = {**CLASS_COLORS,
+                        **{k: C.get(v, v) for k, v in cfg['class_colors'].items()}}
+    return cfg
 
-    if has_written:
-        blocks.append(('written', 'Written', 'Written Response',
-            '',
-            written_section_html(df, written, show_classes)))
 
-    blocks += [
-        ('groups', 'Groups', 'Student Group Comparison',
-         '',
-         to_div(figs['grp']) + subgroup_notes_html(df)),
+def prepare(cfg):
+    """Load an exam's data and return everything report.qmd needs, as a namespace."""
+    from types import SimpleNamespace
+    df, q, written, subject, _, std_name, _, _, nq = load_data(cfg['file'], cfg.get('subject'))
+    conv = load_conversion(cfg['file'])
+    show_classes = cfg.get('show_classes', True)
+    has_scale = (conv is not None and 'Final' in df.columns
+                 and pd.to_numeric(df['Final'], errors='coerce').notna().any())
+    return SimpleNamespace(df=df, q=q, written=written, subject=subject, conv=conv,
+                           std_name=std_name, nq=nq, title=cfg['title'],
+                           home_link=cfg.get('home_link', '../../index.html'),
+                           show_classes=show_classes, has_written=bool(written),
+                           has_scale=has_scale)
 
-        ('takeaways', 'Takeaways', 'Key Takeaways',
-         '',
-         takeaways_html(df, q, std_name, nq, show_classes)),
-    ]
 
-    sections = [section(t, a, c, subtitle=s, num=i + 1) for i, (a, _, t, s, c) in enumerate(blocks)]
-    sections.append(section('Appendix', 'appendix',
-        '<div class="chart-grid-2">'
-        + (oi_html(df, q, nq, show_classes) or '')
-        + (stimulus_type_html(df, q, nq, show_classes) or '')
-        + (task_model_html(df, q, nq, show_classes) or '')
-        + (skill_html(df, q, nq, show_classes) or '')
-        + '</div>'
-        + '<div class="divider"></div>'
-        + '<h3 class="sub-head" style="border-top:0;padding-top:0;margin-top:6px">Question quality '
-          '<span>difficulty vs. point-biserial</span></h3>'
-        + pb_guide_html(len(df))
-        + scatter_html(df, q, std_name, nq, show_classes)
-        + pb_flags_html(df, q, std_name, nq)
-        + (('<div class="divider"></div>' + _opt(figs['box'])) if show_classes else ''),
-        num='+'))
+def raw(html):
+    """Wrap HTML so Quarto passes it through untouched (use in an `output: asis` cell)."""
+    # One wrapper per block keeps the section grid to a single item, so margins inside
+    # collapse exactly as in a normal page flow.
+    return f'\n```{{=html}}\n<div class="sec-body">{html}</div>\n```\n'
 
-    nav_links = ''.join(f'<a href="#{a}">{lbl}</a>' for a, lbl, *_ in blocks) \
-        + '<a href="#appendix">Appendix</a>'
 
-    n_classes = df['Class'].nunique()
-    meta = [f'{len(df)} students', f'{nq} multiple-choice questions']
-    if has_written:
-        meta.append(f'{len(written)} written')
-    if show_classes:
+def md_section(title, anchor, label, html, subtitle=''):
+    """A whole report section as Quarto markdown, for sections that only appear for some
+    exams. Print it from an `output: asis` cell."""
+    sub = f'\n::: {{.subtitle}}\n{subtitle}\n:::\n' if subtitle else ''
+    return f'\n## {title} {{#{anchor} nav="{label}"}}\n{sub}{raw(html)}'
+
+
+def hero_html(ctx):
+    n_classes = ctx.df['Class'].nunique()
+    meta = [f'{len(ctx.df)} students', f'{ctx.nq} multiple-choice questions']
+    if ctx.has_written:
+        meta.append(f'{len(ctx.written)} written')
+    if ctx.show_classes:
         meta.append(f'{n_classes} class{"es" if n_classes != 1 else ""}')
     meta_html = ''.join(f'<span>{m}</span>' for m in meta)
-
-    body = '\n'.join(sections)
-
-    return f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{title}</title>
-  <link rel="icon" type="image/webp" href="https://www.westinghousehs.org/images/index-page/gwhs-logo.webp">
-  {offline_head()}
-  <style>
-    :root {{
-      --navy: {C["navy"]}; --ink: #2B3448; --muted: #667085; --line: #E6E8EC;
-      --bg: #F5F6F8; --card: #FFFFFF; --teal: {C["teal"]}; --accent-ink: #1F7F6D;
-      --radius: 16px; --nav-h: 52px;
-    }}
-    *, *::before, *::after {{ box-sizing: border-box; }}
-    html {{ scroll-behavior: smooth; }}
-    body {{
-      font-family: {FONT}; font-feature-settings: 'cv11', 'tnum';
-      background: var(--bg); color: var(--ink); margin: 0; line-height: 1.55;
-      -webkit-font-smoothing: antialiased;
-    }}
-
-    /* ── Hero ── */
-    .hero {{
-      background: linear-gradient(135deg, #142743 0%, #173862 100%);
-      color: white; padding: 22px 32px 30px;
-    }}
-    .hero-inner {{ max-width: 1080px; margin: 0 auto; }}
-    .home-link {{
-      display: inline-flex; align-items: center; gap: 6px; color: rgba(255,255,255,.75);
-      text-decoration: none; font-size: .82rem; font-weight: 500; margin-bottom: 18px;
-    }}
-    .home-link:hover {{ color: white; }}
-    .eyebrow {{
-      font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-      color: #f2bd00; margin: 0 0 6px;
-    }}
-    .hero h1 {{ margin: 0; font-size: clamp(1.5rem, 3.2vw, 2.1rem); font-weight: 800; letter-spacing: -.02em; }}
-    .meta {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }}
-    .meta span {{
-      font-size: .8rem; padding: 4px 11px; border-radius: 999px;
-      background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14);
-    }}
-
-    /* ── Sticky nav ── */
-    nav {{
-      position: sticky; top: 0; z-index: 100; height: var(--nav-h);
-      background: rgba(255,255,255,.88); backdrop-filter: saturate(180%) blur(10px);
-      -webkit-backdrop-filter: saturate(180%) blur(10px);
-      border-bottom: 1px solid var(--line);
-    }}
-    .nav-inner {{
-      max-width: 1080px; height: 100%; margin: 0 auto; padding: 0 24px;
-      display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none;
-    }}
-    .nav-inner::-webkit-scrollbar {{ display: none; }}
-    nav a {{
-      color: var(--muted); text-decoration: none; font-size: .85rem; font-weight: 500;
-      padding: 6px 12px; border-radius: 8px; white-space: nowrap; transition: background .15s, color .15s;
-    }}
-    nav a:hover {{ color: var(--navy); background: #F0F2F5; }}
-    nav a.active {{ color: var(--accent-ink); background: #E6F5F1; font-weight: 600; }}
-
-    /* ── Layout ── */
-    main {{
-      max-width: 1080px; margin: 0 auto; padding: 28px 24px 72px;
-      display: flex; flex-direction: column; gap: 24px;
-    }}
-    section {{
-      background: var(--card); border-radius: var(--radius); padding: 26px 30px 24px;
-      border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(16,24,40,.04);
-      scroll-margin-top: calc(var(--nav-h) + 16px);
-    }}
-    .sec-head {{
-      display: flex; align-items: flex-start; gap: 14px;
-      padding-bottom: 16px; margin-bottom: 8px; border-bottom: 1px solid var(--line);
-    }}
-    .sec-num {{
-      flex: none; width: 32px; height: 32px; border-radius: 10px; margin-top: 1px;
-      display: grid; place-items: center; font-size: .9rem; font-weight: 700;
-      background: #E6F5F1; color: var(--accent-ink);
-    }}
-    section h2 {{ color: var(--navy); font-size: 1.25rem; font-weight: 700; letter-spacing: -.01em; margin: 0; }}
-    section p.subtitle {{ color: var(--muted); font-size: .9rem; margin: 3px 0 0; max-width: 72ch; }}
-    .divider {{ height: 1px; background: var(--line); margin: 22px 0 10px; }}
-    .note, .muted {{ color: var(--muted); }}
-    .note {{ font-size: .85rem; margin: 4px 0 0; }}
-
-    .plotly-graph-div {{ width: 100% !important; }}
-    .chart-grid .plotly-graph-div {{ height: 320px !important; }}
-    .chart-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }}
-    .chart-grid-2 {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }}
-    .scroll-x {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
-    .scroll-x > * {{ min-width: 520px; }}
-
-    /* ── KPI tiles ── */
-    .kpi-row {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin: 18px 0 10px; }}
-    .kpi {{
-      position: relative; border: 1px solid var(--line); border-radius: 12px;
-      padding: 16px 18px 14px 20px; background: white; overflow: hidden;
-    }}
-    .kpi::before {{ content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--accent); }}
-    .kpi-label {{ font-size: .78rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }}
-    .kpi-value {{ font-size: 2rem; font-weight: 800; color: var(--navy); line-height: 1.15; margin-top: 4px; letter-spacing: -.02em; }}
-    .kpi-value small {{ font-size: 1rem; font-weight: 600; color: var(--muted); }}
-    .kpi-hint {{ font-size: .8rem; color: var(--muted); margin-top: 2px; }}
-
-    /* ── Toggle buttons ── */
-    .q-btns {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 14px 0 6px; }}
-    .q-btns-center {{ justify-content: flex-start; }}
-    .btn-label {{ font-size: .75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-right: 4px; }}
-    .q-btn {{
-      font: inherit; font-size: .82rem; font-weight: 500; min-width: 34px; padding: 5px 11px;
-      border-radius: 8px; border: 1px solid var(--line); background: white; cursor: pointer;
-      color: var(--ink); transition: background .12s, border-color .12s, color .12s;
-    }}
-    .q-btn:hover {{ background: #F0F2F5; border-color: #D0D5DD; }}
-    .q-btn:focus-visible {{ outline: 2px solid var(--teal); outline-offset: 2px; }}
-    .q-btn-active {{ background: var(--navy) !important; color: white !important; border-color: var(--navy) !important; }}
-
-    /* ── Distractor question card ── */
-    .q-card {{
-      display: flex; gap: 14px; align-items: flex-start; margin: 12px 0 6px;
-      background: #F8F9FB; border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px;
-    }}
-    .q-card-num {{
-      flex: none; font-weight: 700; font-size: .85rem; color: white; background: var(--navy);
-      border-radius: 8px; padding: 3px 9px; margin-top: 1px;
-    }}
-    .q-card p {{ margin: 0; font-size: .98rem; color: var(--navy); line-height: 1.5; }}
-    .dis-legend {{ display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .8rem; color: var(--muted); margin: 10px 0 0; }}
-    .dis-legend i {{ display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }}
-
-    /* ── Callout ── */
-    .callout {{ margin-top: 16px; background: #F4F7FE; border: 1px solid #DCE5FB; border-radius: 12px; padding: 14px 18px; }}
-    .callout-warn {{ background: #FEF7EC; border-color: #F7DDB0; margin: 16px 0 4px; }}
-    .callout-title {{ font-weight: 700; color: var(--navy); margin-bottom: 6px; font-size: .92rem; }}
-    .callout ul {{ margin: 0; padding-left: 18px; font-size: .92rem; }}
-    .callout li + li {{ margin-top: 4px; }}
-    .pb-guide {{ display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: center; margin: 10px 0 14px;
-      background: #F4F7FE; border: 1px solid #DCE5FB; border-radius: 12px; padding: 14px 20px; }}
-    .pb-guide p {{ margin: 4px 0 0; font-size: .9rem; }}
-    .pb-bands {{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }}
-    .pb-bands li {{ display: grid; grid-template-columns: 84px 76px 1fr; gap: 8px; align-items: center; font-size: .82rem; }}
-    .pb-chip {{ color: white; font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; text-align: center; }}
-    .pb-range {{ font-weight: 700; color: var(--navy); }}
-    .pb-mean {{ color: var(--muted); }}
-    .pb-flags {{ margin: 0; padding-left: 18px; font-size: .9rem; }}
-    .pb-flags li + li {{ margin-top: 8px; }}
-    .pb-reading {{ display: block; font-size: .82rem; color: var(--muted); }}
-    @media (max-width: 720px) {{ .pb-guide {{ grid-template-columns: 1fr; }} }}
-    .pill {{ display: inline-block; font-size: .75rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: white; border: 1px solid #DCE5FB; margin-left: 4px; }}
-
-    /* ── Takeaways ── */
-    .tk-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 12px; }}
-    .tk-panel {{ border: 1px solid var(--line); border-top: 4px solid var(--accent); border-radius: 12px; padding: 14px 16px 10px; background: linear-gradient(var(--tint), white 90px); }}
-    .tk-head {{ display: flex; align-items: center; justify-content: space-between; }}
-    .tk-title {{ font-size: 1.05rem; font-weight: 800; color: var(--accent); letter-spacing: -.01em; }}
-    .tk-count {{ font-size: .78rem; font-weight: 700; color: var(--accent); background: white; border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; }}
-    .tk-sub {{ font-size: .8rem; color: var(--muted); margin: 2px 0 8px; }}
-    .tk-panel ul {{ list-style: none; margin: 0; padding: 0; }}
-    .tk-panel li {{ display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 9px 0; border-top: 1px solid var(--line); }}
-    .tk-text {{ font-size: .9rem; color: var(--navy); line-height: 1.35; }}
-    .tk-q {{ display: block; font-size: .75rem; color: var(--muted); margin-top: 2px; }}
-    .tk-pct {{ font-weight: 800; font-size: .95rem; text-align: right; }}
-    .tk-bar {{ grid-column: 1 / -1; height: 4px; border-radius: 4px; background: #EEF0F3; overflow: hidden; }}
-    .tk-bar i {{ display: block; height: 100%; border-radius: 4px; }}
-    .tk-panel li.tk-empty {{ display: block; color: var(--muted); font-style: italic; font-size: .88rem; }}
-
-    /* ── Sub-sections & projection table ── */
-    h3.sub-head {{
-      font-size: 1rem; font-weight: 700; color: var(--navy); margin: 26px 0 4px;
-      padding-top: 18px; border-top: 1px solid var(--line);
-    }}
-    h3.sub-head span {{ font-size: .82rem; font-weight: 500; color: var(--muted); margin-left: 8px; }}
-    .lev-table {{ width: 100%; border-collapse: collapse; font-size: .9rem; margin-top: 10px; min-width: 520px; }}
-    .lev-table th {{ text-align: left; font-size: .75rem; font-weight: 600; color: var(--muted);
-      text-transform: uppercase; letter-spacing: .05em; padding: 8px 10px; border-bottom: 1px solid var(--line); }}
-    .lev-table td {{ padding: 10px; border-bottom: 1px solid var(--line); color: var(--navy); vertical-align: top; }}
-    .lev-table td span {{ display: block; font-size: .8rem; color: var(--muted); }}
-    .lev-table td:not(:first-child), .lev-table th:not(:first-child) {{ text-align: right; white-space: nowrap; }}
-
-    footer {{ text-align: center; padding: 8px 24px 40px; font-size: .8rem; color: #98A2B3; }}
-
-    @media (max-width: 720px) {{
-      .hero {{ padding: 16px 16px 22px; }}
-      .nav-inner {{ padding: 0 12px; }}
-      main {{ padding: 16px 12px 48px; gap: 16px; }}
-      section {{ padding: 18px 16px 16px; border-radius: 12px; }}
-      .chart-grid-2 {{ grid-template-columns: 1fr; }}
-      .kpi-value {{ font-size: 1.6rem; }}
-    }}
-    @media print {{
-      nav, .q-btns {{ display: none; }}
-      body {{ background: white; }}
-      .hero {{ background: none; color: var(--navy); padding: 0 0 12px; }}
-      .home-link {{ display: none; }}
-      .eyebrow {{ color: var(--accent-ink); }}
-      .meta span {{ border-color: var(--line); background: none; }}
-      section {{ break-inside: avoid; box-shadow: none; }}
-    }}
-  </style>
-</head>
-<body>
-  <header class="hero">
+    return f'''<header class="hero">
     <div class="hero-inner">
-      <a class="home-link" href="{home_link}">← All reports</a>
+      <a class="home-link" href="{ctx.home_link}">← All reports</a>
       <p class="eyebrow">GWHS Social Studies · Assessment Report</p>
-      <h1>{title}</h1>
+      <h1>{ctx.title}</h1>
       <div class="meta">{meta_html}</div>
     </div>
   </header>
-  <nav><div class="nav-inner">{nav_links}</div></nav>
-  <main>{body}</main>
-  <footer>Generated {today} · George Westinghouse CTE High School</footer>
-  <script>
-    setTimeout(function() {{ window.dispatchEvent(new Event('resize')); }}, 50);
-    setTimeout(function() {{ window.dispatchEvent(new Event('resize')); }}, 300);
-    // Highlight the nav link for the section currently in view
-    (function() {{
-      var links = {{}};
-      document.querySelectorAll('nav a[href^="#"]').forEach(function(a) {{ links[a.getAttribute('href').slice(1)] = a; }});
-      if (!('IntersectionObserver' in window)) return;
-      var obs = new IntersectionObserver(function(entries) {{
-        entries.forEach(function(e) {{
-          if (!e.isIntersecting) return;
-          Object.values(links).forEach(function(a) {{ a.classList.remove('active'); }});
-          var a = links[e.target.id];
-          if (a) {{ a.classList.add('active'); var n = a.parentNode; n.scrollLeft = a.offsetLeft - (n.clientWidth - a.offsetWidth) / 2; }}
-        }});
-      }}, {{ rootMargin: '-30% 0px -60% 0px' }});
-      document.querySelectorAll('main section[id]').forEach(function(s) {{ obs.observe(s); }});
-    }})();
-  </script>
-</body>
-</html>'''
+  <nav><div class="nav-inner"></div></nav>'''
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
-def run(config):
-    """Generate a report from a config dict (keys listed in the module docstring)."""
-    global CLASS_COLORS
-    if 'class_colors' in config:
-        CLASS_COLORS = {**CLASS_COLORS, **config['class_colors']}
+def footer_html():
+    return (f'<footer>Generated {date.today().strftime("%B %d, %Y")} · '
+            'George Westinghouse CTE High School</footer>')
 
-    file         = config['file']
-    title        = config['title']
-    output       = config['output']
-    home_link    = config.get('home_link', '../../index.html')
-    show_classes = config.get('show_classes', True)
 
-    print('Loading data...')
-    df, q, written, subject, std_lookup, std_name, answer_cols, correct_cols, NQ = \
-        load_data(file, config.get('subject'))
-    conv = load_conversion(file)
-    n_short = sum(1 for it in written if it['kind'] == 'short')
-    n_essay = len(written) - n_short
-    print(f'  {len(df)} students, {df["Class"].nunique()} classes, {NQ} MC, '
-          f'{n_short} short-answer + {n_essay} essay ({subject or "subject unknown"})'
-          + ('; conversion chart found' if conv else ''))
-
-    print('Building report...')
-    html = build_html(df, q, written, subject, conv, std_name, NQ, title, home_link, show_classes)
-
-    with open(output, 'w', encoding='utf-8') as f:
-        f.write(html)
-
-    size_kb = len(html.encode('utf-8')) / 1024
-    print(f'Done → {output}  ({size_kb:.0f} KB)')
+def write_plotly_js(path):
+    """Write the installed plotly package's plotly.min.js, which Quarto embeds offline."""
+    from plotly.offline import get_plotlyjs
+    js = get_plotlyjs()
+    if not os.path.exists(path) or os.path.getsize(path) != len(js.encode()):
+        with open(path, 'w', encoding='utf-8') as fh:
+            fh.write(js)

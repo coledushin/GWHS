@@ -1,0 +1,7 @@
+# Report config, rendered by render.py with report.qmd. Paths are relative to the repo root.
+file: Global/October CMA/Global October CMA Data.xlsx
+title: Global History CMA — October 2026
+output: Global/October CMA/global_october_cma_report.html
+class_colors:          # palette names from report_lib.C, or hex codes
+  Sourial: blue
+  Dushin: orange
