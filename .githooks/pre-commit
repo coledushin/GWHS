@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Pre-commit guard: keep student data out of this repo.
+
+Blocks a commit when any staged file
+  1. is a spreadsheet/data file (.xlsx, .xls, .xlsm, .csv, .ods, .numbers), even if force-added,
+  2. is a Jupyter notebook with saved outputs, or
+  3. contains a student identifier (name, student ID or key) found in the "Scores"
+     sheet of any local spreadsheet in this folder.
+
+The identifiers are read from your local, git-ignored spreadsheets at commit time;
+this file never stores any of them.
+
+Enable once per clone:   git config core.hooksPath .githooks
+Bypass (only if you are certain): git commit --no-verify
+"""
+import glob
+import json
+import os
+import re
+import subprocess
+import sys
+
+DATA_EXT = ('.xlsx', '.xls', '.xlsm', '.csv', '.ods', '.numbers')
+ID_HEADER = re.compile(r'student|name|osis|^id$|^key$', re.I)
+
+root = subprocess.run(['git', 'rev-parse', '--show-toplevel'],
+                      capture_output=True, text=True, check=True).stdout.strip()
+os.chdir(root)
+
+staged = [p for p in subprocess.run(
+    ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'],
+    capture_output=True, text=True, check=True).stdout.split('\0') if p]
+if not staged:
+    sys.exit(0)
+
+problems = []
+
+# 1. Data files
+for p in staged:
+    if p.lower().endswith(DATA_EXT):
+        problems.append(f'{p}: data files must never be committed')
+
+# 2. Notebooks with outputs
+for p in staged:
+    if p.endswith('.ipynb'):
+        try:
+            nb = json.loads(subprocess.run(['git', 'show', f':{p}'], capture_output=True,
+                                           check=True).stdout)
+            if any(c.get('outputs') for c in nb.get('cells', [])):
+                problems.append(f'{p}: notebook has saved outputs (clear all outputs first)')
+        except (ValueError, subprocess.CalledProcessError):
+            pass
+
+# 3. Student identifiers from local spreadsheets
+try:
+    import openpyxl
+except ImportError:
+    print('pre-commit: openpyxl is not installed for this python3, so student names cannot be '
+          'checked.\nInstall it (pip3 install openpyxl) and commit again.', file=sys.stderr)
+    sys.exit(1)
+
+ids = set()
+for f in glob.glob('**/*.xlsx', recursive=True):
+    if os.path.basename(f).startswith('~$'):
+        continue
+    try:
+        wb = openpyxl.load_workbook(f, read_only=True)
+    except Exception:
+        continue
+    if 'Scores' not in wb.sheetnames:
+        continue
+    rows = wb['Scores'].iter_rows(values_only=True)
+    header = next(rows, ())
+    cols = [i for i, h in enumerate(header) if h and ID_HEADER.search(str(h))]
+    for row in rows:
+        for i in cols:
+            v = row[i] if i < len(row) else None
+            if isinstance(v, str) and len(v.strip()) >= 4 and not v.startswith('='):
+                v = ' '.join(v.split())
+                ids.add(v.lower())
+                if ' ' in v:  # also catch "Last, First"
+                    first, last = v.rsplit(' ', 1)
+                    ids.add(f'{last}, {first}'.lower())
+
+if ids:
+    pattern = re.compile('|'.join(r'(?<![a-z0-9])' + re.escape(s) + r'(?![a-z0-9])'
+                                  for s in sorted(ids, key=len, reverse=True)))
+    for p in staged:
+        if p.lower().endswith(DATA_EXT):
+            continue
+        blob = subprocess.run(['git', 'show', f':{p}'], capture_output=True).stdout
+        text = ' '.join(blob.decode('utf-8', 'ignore').lower().split())
+        n = len(set(pattern.findall(text)))
+        if n:
+            problems.append(f'{p}: contains {n} student identifier(s) from your score spreadsheets')
+
+if problems:
+    print('\nCommit blocked: possible student data in staged files\n', file=sys.stderr)
+    for msg in problems:
+        print('  - ' + msg, file=sys.stderr)
+    print('\nRemove the data (git restore --staged <file> to unstage), then commit again.',
+          file=sys.stderr)
+    sys.exit(1)
