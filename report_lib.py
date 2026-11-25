@@ -13,7 +13,10 @@ Config keys:
   subject       – 'US' or 'Global' (default: inferred from content-standard codes)
 """
 
+import base64
+import functools
 import json
+import os
 import re as _re
 import uuid
 from collections import defaultdict
@@ -31,6 +34,20 @@ C = dict(
     blue='#3D6FE8', purple='#8B5CF6', navy='#1F2A44', gray='#8A8F98', lgray='#D9DCE1',
 )
 GRID = '#EEF0F3'
+
+
+@functools.lru_cache(maxsize=None)
+def offline_head():
+    """<head> assets embedded inline so a report opens with no internet connection:
+    Plotly.js from the installed plotly package, and a Latin subset of Inter
+    (assets/inter-subset.woff2, SIL Open Font License)."""
+    from plotly.offline import get_plotlyjs
+    font = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'inter-subset.woff2')
+    with open(font, 'rb') as fh:
+        b64 = base64.b64encode(fh.read()).decode()
+    return (f'<style>@font-face{{font-family:Inter;font-style:normal;font-weight:100 900;'
+            f'font-display:swap;src:url(data:font/woff2;base64,{b64}) format("woff2")}}</style>\n'
+            f'  <script>{get_plotlyjs()}</script>')
 FONT = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"
 
 # Default class colors — overridden by config['class_colors'] in run()
@@ -1525,7 +1542,8 @@ def kpi_html(df, nq):
             + _kpi(f'{mean_s:.1f}<small> / {nq}</small>', 'Average score', score_color(round(mean_s), nq),
                    f'{mean_s / nq:.0%} correct on average')
             + _kpi(f'{pct_thr:.0%}', f'Scored {thresh} or more',
-                   C['teal'] if pct_thr >= 0.55 else C['orange'], f'{thresh / nq:.0%}+ of questions correct')
+                   C['teal'] if pct_thr >= 0.55 else C['orange'],
+                   f'{int(thresh * 100 // nq)}%+ of questions correct')  # floor: never overstate
             + _kpi(str(n), 'Students tested', C['blue'], f'{df["Class"].nunique()} classes')
             + _kpi(str(n_blank), 'Left a question blank',
                    C['orange'] if n_blank > n * 0.10 else C['teal'], f'{n_blank / n:.0%} of students')
@@ -1541,7 +1559,8 @@ def subgroup_notes_html(df):
             avg_g = df[mask]['MC_Score'].mean()
             avg_o = df[~mask]['MC_Score'].mean()
             gap   = avg_o - avg_g
-            note  = f'{gap:+.1f} pt gap' if abs(gap) >= 0.5 else 'minimal gap'
+            note  = (f'{abs(gap):.1f} pts {"lower" if gap > 0 else "higher"}'
+                     if abs(gap) >= 0.5 else 'minimal gap')
             lines.append(
                 f'<li><b>{name}</b> <span class="muted">(n={n_g})</span> — averaged {avg_g:.1f} '
                 f'vs. {avg_o:.1f} for other students <span class="pill">{note}</span></li>')
@@ -1742,10 +1761,7 @@ def build_html(df, q, written, subject, conv, std_name, nq, title,
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title}</title>
   <link rel="icon" type="image/webp" href="https://www.westinghousehs.org/images/index-page/gwhs-logo.webp">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+  {offline_head()}
   <style>
     :root {{
       --navy: {C["navy"]}; --ink: #2B3448; --muted: #667085; --line: #E6E8EC;
